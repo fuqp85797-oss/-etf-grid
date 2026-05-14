@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>A股 ETF 网格适用性排行榜</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+  .tag-good { background: #dcfce7; color: #166534; }
+  .tag-warn { background: #fef3c7; color: #92400e; }
+  .tag-bad  { background: #fee2e2; color: #991b1b; }
+  .num { font-variant-numeric: tabular-nums; }
+  input[type="text"], input[type="number"], select {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 14px; background: #fff;
+  }
+  input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.2); }
+  button.primary { background: #3b82f6; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: 600; }
+  button.primary:hover { background: #2563eb; }
+  button.primary:disabled { background: #9ca3af; cursor: not-allowed; }
+  button.danger { background: #fff; color: #dc2626; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+  button.danger:hover { background: #fef2f2; }
+  .loader { border: 3px solid #e5e7eb; border-top: 3px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+  .rank-table th { font-weight: 600; user-select: none; }
+  .rank-table th.sortable { cursor: pointer; }
+  .rank-table th.sortable:hover { background: #f3f4f6; }
+  .rank-table th .arrow { opacity: 0.4; margin-left: 2px; }
+  .rank-table th.active .arrow { opacity: 1; color: #3b82f6; }
+  .rank-table tbody tr { cursor: pointer; }
+  .rank-table tbody tr:hover { background: #eff6ff; }
+
+  .score-bar { display: inline-block; vertical-align: middle; height: 6px; border-radius: 3px; background: #e5e7eb; width: 60px; overflow: hidden; margin-left: 6px; }
+  .score-bar > div { height: 100%; }
+</style>
+</head>
+<body class="bg-gray-50">
+<div class="max-w-7xl mx-auto p-4 space-y-4">
+
+  <header class="flex items-baseline justify-between flex-wrap gap-2">
+    <h1 class="text-2xl font-bold text-gray-800">📊 A股 ETF 网格适用性排行榜</h1>
+    <div class="flex items-center gap-4">
+      <a href="etf-grid.html" class="text-sm text-blue-600 hover:underline">🔍 单只分析 →</a>
+      <p class="text-xs text-gray-500">数据：新浪/腾讯财经 · 评分越高越适合网格</p>
+    </div>
+  </header>
+
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">流动性筛选</label>
+        <select id="liqFilter">
+          <option value="0">全部</option>
+          <option value="10000000">日成交额 &gt; 1000万</option>
+          <option value="50000000" selected>日成交额 &gt; 5000万</option>
+          <option value="100000000">日成交额 &gt; 1亿</option>
+          <option value="500000000">日成交额 &gt; 5亿</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">评估窗口</label>
+        <select id="winSize">
+          <option value="120">近 120 日（半年）</option>
+          <option value="250" selected>近 250 日（一年）</option>
+          <option value="500">近 500 日（两年）</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">并发数</label>
+        <select id="concurrency">
+          <option value="4">4（慢，稳）</option>
+          <option value="8" selected>8（推荐）</option>
+          <option value="16">16（快）</option>
+        </select>
+      </div>
+      <button id="btnScan" class="primary">开始扫描</button>
+      <button id="btnClearCache" class="danger" title="清除本地缓存">清缓存</button>
+      <div id="scanStatus" class="text-sm text-gray-600"></div>
+    </div>
+
+    <div id="scanProgress" class="hidden mt-3">
+      <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
+        <div id="progressBar" class="bg-blue-500 h-2 transition-all" style="width:0%"></div>
+      </div>
+      <div id="progressText" class="text-xs text-gray-500 mt-1"></div>
+    </div>
+
+    <div id="rankSearchBox" class="hidden mt-3">
+      <input id="rankSearch" type="text" placeholder="搜索代码或名称..." class="w-64" />
+      <span class="text-xs text-gray-500 ml-2">提示：点击表头排序，点击行在新标签查看详细分析</span>
+    </div>
+  </section>
+
+  <section id="rankTable" class="hidden bg-white rounded-lg shadow-sm overflow-hidden">
+    <div class="overflow-x-auto max-h-[700px] overflow-y-auto">
+      <table class="w-full text-sm rank-table">
+        <thead class="bg-gray-50 text-gray-600 sticky top-0 z-10">
+          <tr>
+            <th class="px-3 py-2 text-left">#</th>
+            <th class="px-3 py-2 text-left sortable" data-col="code">代码<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-left sortable" data-col="name">名称<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-right sortable active" data-col="score" data-dir="desc">评分<span class="arrow">↓</span></th>
+            <th class="px-3 py-2 text-left">结论</th>
+            <th class="px-3 py-2 text-right sortable" data-col="adx">ADX<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-right sortable" data-col="r2">R²<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-right sortable" data-col="vol">年化波动<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-right sortable" data-col="pos">位置分位<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-right sortable" data-col="amount">日成交额<span class="arrow">↕</span></th>
+            <th class="px-3 py-2 text-right">现价</th>
+          </tr>
+        </thead>
+        <tbody id="rankBody"></tbody>
+      </table>
+    </div>
+    <div id="rankFooter" class="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-t"></div>
+  </section>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d=2) => (v == null || isNaN(v)) ? '-' : (+v).toFixed(d);
+const fmtAmount = (v) => {
+  if (v == null || isNaN(v)) return '-';
+  if (v >= 1e8) return (v/1e8).toFixed(2) + '亿';
+  if (v >= 1e4) return (v/1e4).toFixed(0) + '万';
+  return v.toFixed(0);
+};
+const todayStr = () => new Date().toISOString().slice(0,10).replace(/-/g,'');
+
+// 灵活 JSONP：buildUrl 接收回调名生成完整 URL（兼容 Sina 把 cb 写在 path 中的格式）
+function jsonpFlex(buildUrl, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const cb = 'jsonp_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { reject(new Error('请求超时')); cleanup(); }}, timeoutMs);
+    window[cb] = (data) => { done = true; clearTimeout(timer); resolve(data); cleanup(); };
+    script.onerror = () => { if (!done) { clearTimeout(timer); reject(new Error('脚本加载失败')); cleanup(); }};
+    function cleanup() { try { delete window[cb]; } catch {} if (script.parentNode) script.remove(); }
+    script.src = buildUrl(cb);
+    document.body.appendChild(script);
+  });
+}
+
+function symbolOf(code) {
+  code = String(code).trim();
+  if (!/^\d{6}$/.test(code)) throw new Error('代码必须为 6 位数字');
+  const f = code[0];
+  return ((f === '5' || f === '6') ? 'sh' : 'sz') + code;
+}
+
+// 拉取 ETF 全集（新浪 JSONP，UTF-8 JSON 数组）
+async function fetchAllETFs() {
+  const all = [];
+  const pageSize = 100;
+  // 一次性把所有页拉完（Sina 节点上限 ~1500，约 15 页）
+  for (let p = 1; p <= 25; p++) {
+    let data;
+    try {
+      data = await jsonpFlex(cb =>
+        `https://vip.stock.finance.sina.com.cn/quotes_service/api/jsonp_v2.php/${cb}/Market_Center.getHQNodeData?page=${p}&num=${pageSize}&sort=symbol&asc=1&node=etf_hq_fund`
+      );
+    } catch (e) { break; }
+    if (!Array.isArray(data) || !data.length) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return all.map(e => ({
+    code: String(e.code),
+    name: e.name,
+    symbol: e.symbol,
+    price: +e.trade,
+    amount: +e.amount,
+  })).filter(e => /^\d{6}$/.test(e.code) && !isNaN(e.price));
+}
+
+// 拉取单只 ETF 的 K 线（腾讯，UTF-8 JSON 通过 _callback 参数 JSONP）
+async function fetchKline(code, days = 600) {
+  const sym = symbolOf(code);
+  const data = await jsonpFlex(cb =>
+    `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${sym},day,,,${days},qfq&_callback=${cb}`,
+    12000
+  );
+  if (!data || data.code !== 0) throw new Error('Tencent API 返回错误');
+  const obj = data.data?.[sym];
+  if (!obj) throw new Error('数据为空');
+  const klines = obj.qfqday || obj.day || [];
+  if (!klines.length) throw new Error('K 线为空');
+  let prev = null;
+  const rows = klines.map(k => {
+    const open = +k[1], close = +k[2], high = +k[3], low = +k[4];
+    const amp = prev ? 100 * (high - low) / prev : 100 * (high - low) / Math.max(open, 1e-9);
+    const chgPct = prev ? 100 * (close - prev) / prev : 0;
+    const row = { date: k[0], open, close, high, low, vol: +k[5], amount: NaN, amp, chgPct, chg: prev ? close - prev : 0, turnover: NaN };
+    prev = close;
+    return row;
+  });
+  return { code, rows };
+}
+
+/* 技术指标 */
+function sma(arr, n) {
+  const out = []; let s = 0;
+  for (let i = 0; i < arr.length; i++) { s += arr[i]; if (i >= n) s -= arr[i-n]; out.push(i >= n - 1 ? s / n : NaN); }
+  return out;
+}
+function stddev(arr) {
+  const m = arr.reduce((a,b) => a+b, 0) / arr.length;
+  return Math.sqrt(arr.reduce((a,b) => a + (b-m)**2, 0) / arr.length);
+}
+function median(arr) {
+  const a = arr.filter(v => !isNaN(v)).sort((x,y) => x-y);
+  if (!a.length) return NaN;
+  const m = Math.floor(a.length/2);
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function adx(rows, n=14) {
+  const len = rows.length;
+  if (len <= n+1) return new Array(len).fill(NaN);
+  const tr = new Array(len).fill(0), pDM = new Array(len).fill(0), mDM = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    const h = rows[i].high, l = rows[i].low, pc = rows[i-1].close;
+    tr[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    const upMove = rows[i].high - rows[i-1].high;
+    const downMove = rows[i-1].low - rows[i].low;
+    pDM[i] = (upMove > downMove && upMove > 0) ? upMove : 0;
+    mDM[i] = (downMove > upMove && downMove > 0) ? downMove : 0;
+  }
+  const sTR = new Array(len).fill(NaN), sP = new Array(len).fill(NaN), sM = new Array(len).fill(NaN);
+  let sumTR=0, sumP=0, sumM=0;
+  for (let i = 1; i <= n; i++) { sumTR += tr[i]; sumP += pDM[i]; sumM += mDM[i]; }
+  sTR[n] = sumTR; sP[n] = sumP; sM[n] = sumM;
+  for (let i = n+1; i < len; i++) {
+    sTR[i] = sTR[i-1] - sTR[i-1]/n + tr[i];
+    sP[i]  = sP[i-1]  - sP[i-1]/n  + pDM[i];
+    sM[i]  = sM[i-1]  - sM[i-1]/n  + mDM[i];
+  }
+  const pDI = sP.map((v,i) => (v && sTR[i]) ? 100*v/sTR[i] : NaN);
+  const mDI = sM.map((v,i) => (v && sTR[i]) ? 100*v/sTR[i] : NaN);
+  const dx = pDI.map((v,i) => {
+    if (isNaN(v) || isNaN(mDI[i])) return NaN;
+    const sum = v + mDI[i];
+    return sum === 0 ? 0 : 100 * Math.abs(v - mDI[i]) / sum;
+  });
+  const out = new Array(len).fill(NaN);
+  let firstIdx = -1;
+  for (let i = 0; i < len; i++) if (!isNaN(dx[i])) { firstIdx = i; break; }
+  if (firstIdx < 0 || firstIdx + n >= len) return out;
+  let s = 0;
+  for (let i = firstIdx; i < firstIdx + n; i++) s += dx[i];
+  out[firstIdx + n - 1] = s / n;
+  for (let i = firstIdx + n; i < len; i++) out[i] = (out[i-1] * (n-1) + dx[i]) / n;
+  return out;
+}
+function rSquared(prices) {
+  const n = prices.length;
+  const y = prices.map(p => Math.log(Math.max(p, 1e-9)));
+  let sx=0, sy=0, sxy=0, sxx=0, syy=0;
+  for (let i = 0; i < n; i++) { sx += i; sy += y[i]; sxy += i*y[i]; sxx += i*i; syy += y[i]*y[i]; }
+  const num = n*sxy - sx*sy;
+  const den = Math.sqrt((n*sxx - sx*sx) * (n*syy - sy*sy));
+  if (den === 0) return 0;
+  const r = num/den; return r*r;
+}
+function annVol(prices) {
+  if (prices.length < 2) return 0;
+  const rets = [];
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i-1] > 0) rets.push(Math.log(prices[i]/prices[i-1]));
+  }
+  return stddev(rets) * Math.sqrt(252);
+}
+function bbWidth(prices, n=20) {
+  const ma = sma(prices, n);
+  const out = [];
+  for (let i = 0; i < prices.length; i++) {
+    if (i < n-1) { out.push(NaN); continue; }
+    out.push((4*stddev(prices.slice(i-n+1, i+1))) / ma[i]);
+  }
+  return out;
+}
+
+function evaluateGridSuitability(rows, winSize = 120) {
+  const prices = rows.map(r => r.close);
+  const n = prices.length;
+  const tail = (k) => prices.slice(Math.max(0, n-k));
+  const winN = Math.min(winSize, n);
+  const win = tail(winN);
+
+  const adxArr = adx(rows);
+  const adxLast = adxArr[adxArr.length-1];
+  const r2 = rSquared(win);
+  const vol = annVol(win);
+  const bbw = bbWidth(prices, 20);
+  const bbwLast = bbw[bbw.length-1];
+  const bbwMed = median(bbw.slice(-winN));
+  const refN = Math.min(250, n);
+  const refTail = tail(refN);
+  const high = Math.max(...refTail);
+  const low = Math.min(...refTail);
+  const cur = prices[n-1];
+  const posPct = (high - low) > 0 ? (cur - low) / (high - low) : 0.5;
+
+  const sADX = Math.max(0, Math.min(100, (35 - (isNaN(adxLast) ? 30 : adxLast)) / 15 * 100));
+  const sR2  = Math.max(0, Math.min(100, (0.7 - r2) / 0.5 * 100));
+  let sVol;
+  const volPct = vol * 100;
+  if (volPct < 10) sVol = volPct / 10 * 50;
+  else if (volPct <= 30) sVol = 50 + (volPct - 10) / 20 * 50;
+  else if (volPct <= 50) sVol = 100 - (volPct - 30) / 20 * 40;
+  else sVol = Math.max(0, 60 - (volPct - 50));
+  sVol = Math.max(0, Math.min(100, sVol));
+  const bbwRatio = (bbwMed > 0) ? bbwLast / bbwMed : 1;
+  const sBBW = Math.max(0, Math.min(100, 100 - Math.abs(bbwRatio - 1) * 80));
+  const sPos = Math.max(0, Math.min(100, (1 - posPct) * 100));
+
+  const weights = { ADX:0.30, R2:0.25, Vol:0.20, Pos:0.15, BBW:0.10 };
+  const total = sADX*weights.ADX + sR2*weights.R2 + sVol*weights.Vol + sPos*weights.Pos + sBBW*weights.BBW;
+
+  let label, tag;
+  if (total >= 70) { label = '✅ 适合网格交易'; tag = 'tag-good'; }
+  else if (total >= 50) { label = '⚠️ 谨慎参与'; tag = 'tag-warn'; }
+  else { label = '❌ 不建议网格'; tag = 'tag-bad'; }
+
+  return { total, label, tag, metrics: { adx: adxLast, r2, vol: volPct, posPct, cur } };
+}
+
+/* 扫描器 */
+let rankData = [];
+let lastScanWin = null;
+let sortState = { col: 'score', dir: 'desc' };
+
+const CACHE_PREFIX = 'etf_rank_v2_';
+function cacheKey(date, liq, win) { return `${CACHE_PREFIX}${date}_${liq}_${win}`; }
+function loadCache(date, liq, win) {
+  try { const raw = localStorage.getItem(cacheKey(date, liq, win)); return raw ? JSON.parse(raw) : null; }
+  catch { return null; }
+}
+function saveCache(date, liq, win, data) {
+  try { localStorage.setItem(cacheKey(date, liq, win), JSON.stringify(data)); } catch (e) { console.warn(e); }
+}
+function clearAllCache() {
+  Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k));
+}
+
+async function scanAllETFs(opts) {
+  const { liq, win, concurrency, onProgress } = opts;
+  $('scanStatus').innerHTML = '<span class="loader"></span> 拉取 ETF 列表（新浪）...';
+  const all = await fetchAllETFs();
+  if (!all.length) throw new Error('未获取到 ETF 列表');
+  const filtered = all.filter(e => (e.amount || 0) >= liq);
+  $('scanStatus').innerHTML = `<span class="loader"></span> 共 ${all.length} 只，筛选后 ${filtered.length} 只`;
+
+  const days = Math.min(800, Math.ceil(win * 1.5));
+  const results = [];
+  let done = 0;
+  const queue = [...filtered];
+  async function worker() {
+    while (queue.length) {
+      const etf = queue.shift();
+      try {
+        const { rows } = await fetchKline(etf.code, days);
+        if (rows && rows.length >= 60) {
+          const ev = evaluateGridSuitability(rows, win);
+          results.push({
+            code: etf.code, name: etf.name, amount: etf.amount,
+            price: rows[rows.length-1].close,
+            score: ev.total, label: ev.label, tag: ev.tag,
+            adx: ev.metrics.adx, r2: ev.metrics.r2, vol: ev.metrics.vol, pos: ev.metrics.posPct,
+          });
+        }
+      } catch (e) { /* skip */ }
+      done++;
+      onProgress?.(done, filtered.length, results.length);
+    }
+  }
+  await Promise.all(Array(concurrency).fill(0).map(() => worker()));
+  return results;
+}
+
+function renderRankTable() {
+  const search = ($('rankSearch').value || '').trim().toLowerCase();
+  let data = rankData;
+  if (search) data = data.filter(r => r.code.includes(search) || r.name.toLowerCase().includes(search));
+  const dir = sortState.dir === 'asc' ? 1 : -1;
+  const col = sortState.col;
+  data = [...data].sort((a,b) => {
+    const va = a[col], vb = b[col];
+    if (typeof va === 'string') return va.localeCompare(vb) * dir;
+    return ((va ?? -Infinity) - (vb ?? -Infinity)) * dir;
+  });
+
+  const scoreColor = (s) => s >= 70 ? '#16a34a' : s >= 50 ? '#d97706' : '#dc2626';
+  const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const html = data.map((r, i) =>
+    `<tr data-code="${r.code}" data-name="${esc(r.name)}" class="border-b hover:bg-blue-50">
+      <td class="px-3 py-2 text-gray-500">${i+1}</td>
+      <td class="px-3 py-2 num font-mono">${r.code}</td>
+      <td class="px-3 py-2">${r.name}</td>
+      <td class="px-3 py-2 text-right">
+        <span class="font-bold num" style="color:${scoreColor(r.score)}">${r.score.toFixed(1)}</span>
+        <span class="score-bar"><div style="width:${Math.min(100,r.score)}%;background:${scoreColor(r.score)}"></div></span>
+      </td>
+      <td class="px-3 py-2"><span class="badge ${r.tag}">${r.label.replace(/^[✅⚠️❌]\s*/,'')}</span></td>
+      <td class="px-3 py-2 text-right num">${fmt(r.adx,1)}</td>
+      <td class="px-3 py-2 text-right num">${fmt(r.r2,2)}</td>
+      <td class="px-3 py-2 text-right num">${fmt(r.vol,1)}%</td>
+      <td class="px-3 py-2 text-right num">${fmt(r.pos*100,0)}%</td>
+      <td class="px-3 py-2 text-right num">${fmtAmount(r.amount)}</td>
+      <td class="px-3 py-2 text-right num">${fmt(r.price,3)}</td>
+    </tr>`
+  ).join('');
+  $('rankBody').innerHTML = html || '<tr><td colspan="11" class="text-center py-6 text-gray-500">无匹配数据</td></tr>';
+  $('rankFooter').textContent = `共 ${data.length} 只 ETF（按 ${col} ${sortState.dir==='asc'?'升序':'降序'} 排列）`;
+
+  document.querySelectorAll('.rank-table th.sortable').forEach(th => {
+    const c = th.dataset.col;
+    th.classList.toggle('active', c === col);
+    const arrow = th.querySelector('.arrow');
+    if (arrow) arrow.textContent = (c === col) ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕';
+  });
+}
+
+async function onScan() {
+  const liq = +$('liqFilter').value;
+  const win = +$('winSize').value;
+  const concurrency = +$('concurrency').value;
+  const date = todayStr();
+
+  const cached = loadCache(date, liq, win);
+  if (cached && cached.length) {
+    rankData = cached;
+    lastScanWin = win;
+    $('rankTable').classList.remove('hidden');
+    $('rankSearchBox').classList.remove('hidden');
+    renderRankTable();
+    $('scanStatus').innerHTML = `<span class="text-green-600">✓ 已从今日缓存加载 ${rankData.length} 只</span>`;
+    return;
+  }
+
+  $('btnScan').disabled = true;
+  $('scanProgress').classList.remove('hidden');
+  try {
+    const results = await scanAllETFs({
+      liq, win, concurrency,
+      onProgress: (done, total, ok) => {
+        $('progressBar').style.width = (done/total) * 100 + '%';
+        $('progressText').textContent = `已扫描 ${done}/${total}（成功 ${ok}）`;
+      }
+    });
+    rankData = results;
+    lastScanWin = win;
+    saveCache(date, liq, win, results);
+    $('rankTable').classList.remove('hidden');
+    $('rankSearchBox').classList.remove('hidden');
+    renderRankTable();
+    $('scanStatus').innerHTML = `<span class="text-green-600">✓ 扫描完成，共评分 ${results.length} 只 ETF</span>`;
+  } catch (e) {
+    $('scanStatus').innerHTML = `<span class="text-red-600">✗ ${e.message}</span>`;
+    console.error(e);
+  } finally {
+    $('btnScan').disabled = false;
+    $('scanProgress').classList.add('hidden');
+  }
+}
+
+$('btnScan').addEventListener('click', onScan);
+$('btnClearCache').addEventListener('click', () => {
+  clearAllCache();
+  $('scanStatus').innerHTML = '<span class="text-gray-600">缓存已清空</span>';
+});
+$('rankSearch').addEventListener('input', renderRankTable);
+document.querySelectorAll('.rank-table th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const c = th.dataset.col;
+    if (sortState.col === c) sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    else { sortState.col = c; sortState.dir = (c === 'code' || c === 'name') ? 'asc' : 'desc'; }
+    renderRankTable();
+  });
+});
+
+// 点击行 → 在新标签打开单只详情（带 name + win 参数，确保评分一致）
+$('rankBody').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-code]');
+  if (!tr) return;
+  const code = tr.dataset.code;
+  const name = tr.dataset.name || '';
+  const win = lastScanWin || +$('winSize').value;
+  window.open(`etf-grid.html?code=${code}&name=${encodeURIComponent(name)}&win=${win}`, '_blank');
+});
+</script>
+</body>
+</html>
