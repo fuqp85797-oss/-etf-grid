@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>ETF 网格交易分析 - 单只详情</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .metric-card { transition: all .2s; }
+  .metric-card:hover { transform: translateY(-2px); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+  .tag-good { background: #dcfce7; color: #166534; }
+  .tag-warn { background: #fef3c7; color: #92400e; }
+  .tag-bad  { background: #fee2e2; color: #991b1b; }
+  .num { font-variant-numeric: tabular-nums; }
+  input[type="text"], input[type="number"], input[type="date"], select {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 14px; background: #fff;
+  }
+  input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.2); }
+  button.primary { background: #3b82f6; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: 600; }
+  button.primary:hover { background: #2563eb; }
+  button.primary:disabled { background: #9ca3af; cursor: not-allowed; }
+  button.ghost { background: #fff; color: #374151; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; }
+  button.ghost:hover { background: #f9fafb; }
+  .loader { border: 3px solid #e5e7eb; border-top: 3px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+  .mode-btn { padding: 8px 18px; font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent; cursor: pointer; background: transparent; font-size: 14px; }
+  .mode-btn:hover { color: #374151; }
+  .mode-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+  .param-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; }
+  .param-card .label { font-size: 11px; color: #6b7280; }
+  .param-card .value { font-weight: 700; color: #111827; font-size: 16px; margin-top: 2px; }
+</style>
+</head>
+<body class="bg-gray-50">
+<div class="max-w-[1700px] mx-auto p-4 space-y-4">
+
+  <header class="flex items-baseline justify-between flex-wrap gap-2">
+    <h1 class="text-2xl font-bold text-gray-800">ETF 网格交易回测 & 适用性分析</h1>
+    <div class="flex items-center gap-4">
+      <a href="etf-ranking.html" class="text-sm text-blue-600 hover:underline">📊 全市场排行榜 →</a>
+      <p class="text-xs text-gray-500">数据：东方财富前复权日K</p>
+    </div>
+  </header>
+
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex flex-wrap items-end gap-3">
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">ETF 代码</label>
+        <input id="etfCode" type="text" value="510300" placeholder="如 510300" class="w-32" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">起始日期</label>
+        <input id="dateStart" type="date" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">结束日期</label>
+        <input id="dateEnd" type="date" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">评分窗口</label>
+        <select id="winSize">
+          <option value="120">120日（半年）</option>
+          <option value="250" selected>250日（一年）</option>
+          <option value="500">500日（两年）</option>
+        </select>
+      </div>
+      <button id="btnLoad" class="primary">加载数据 & 分析</button>
+      <div id="loadStatus" class="text-sm text-gray-600"></div>
+      <div class="ml-auto text-xs text-gray-400">
+        常用：510300 沪深300 · 510500 中证500 · 159915 创业板 · 512100 中证1000
+      </div>
+    </div>
+  </section>
+
+  <section id="scorePanel" class="hidden bg-white rounded-lg shadow-sm p-4">
+    <div class="flex items-start justify-between flex-wrap gap-4">
+      <div class="flex items-center gap-4">
+        <div class="text-center">
+          <div id="scoreNum" class="text-5xl font-bold num">--</div>
+          <div class="text-xs text-gray-500 mt-1">综合评分 / 100 · <span id="scoreWinText" class="text-blue-600">近 - 日</span></div>
+        </div>
+        <div>
+          <div id="scoreLabel" class="text-xl font-semibold">--</div>
+          <div id="scoreReason" class="text-sm text-gray-600 mt-1 max-w-2xl"></div>
+        </div>
+      </div>
+      <div id="scoreBreakdown" class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm"></div>
+    </div>
+  </section>
+
+  <section id="chartPanel" class="hidden bg-white rounded-lg shadow-sm p-2">
+    <div id="kchart" style="width:100%;height:480px;"></div>
+  </section>
+
+  <section id="backtestPanel" class="hidden bg-white rounded-lg shadow-sm p-4">
+    <div class="flex items-center border-b mb-3">
+      <button class="mode-btn active" data-mode="manual">手动回测</button>
+      <button class="mode-btn" data-mode="ai">🤖 AI 智能寻优</button>
+    </div>
+
+    <!-- ============ 手动回测 ============ -->
+    <div data-mode-pane="manual">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm text-gray-600">自定义参数运行回测，结果可直接复用到实盘</span>
+        <button id="btnAutoFill" class="ghost text-sm">使用推荐参数</button>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">总本金 (元)</label>
+          <input id="capital" type="number" value="100000" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">首笔建仓金额 (元)</label>
+          <input id="initialBuy" type="number" value="50000" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">每格金额 (元)</label>
+          <input id="perGridAmt" type="number" value="2500" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">基准价 (元)</label>
+          <input id="benchmark" type="number" step="0.001" placeholder="可选" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">网格模式</label>
+          <select id="gridType" class="w-full">
+            <option value="geo" selected>百分比浮动间距</option>
+            <option value="arith">固定间距</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">价格上沿</label>
+          <input id="gridHigh" type="number" step="0.001" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">价格下沿</label>
+          <input id="gridLow" type="number" step="0.001" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">网格数</label>
+          <input id="gridNum" type="number" value="20" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">手续费 (万)</label>
+          <input id="feeRate" type="number" step="0.1" value="1" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">滑点 (万)</label>
+          <input id="slippage" type="number" step="0.1" value="2" class="w-full" />
+        </div>
+      </div>
+      <button id="btnBacktest" class="primary">运行回测</button>
+
+      <div id="backtestResult" class="hidden mt-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div class="metric-card bg-blue-50 rounded p-3">
+            <div class="text-xs text-gray-600">累计收益</div>
+            <div id="rGrid" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-blue-50 rounded p-3">
+            <div class="text-xs text-gray-600">年化收益</div>
+            <div id="rAnn" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-green-50 rounded p-3">
+            <div class="text-xs text-gray-600">夏普比率</div>
+            <div id="rSharpe" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-gray-50 rounded p-3">
+            <div class="text-xs text-gray-600">买入持有</div>
+            <div id="rHold" class="text-xl font-bold num"></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div class="metric-card bg-green-50 rounded p-3">
+            <div class="text-xs text-gray-600">索提诺</div>
+            <div id="rSortino" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-green-50 rounded p-3">
+            <div class="text-xs text-gray-600">卡玛</div>
+            <div id="rCalmar" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-cyan-50 rounded p-3">
+            <div class="text-xs text-gray-600">胜率</div>
+            <div id="rWinRate" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-cyan-50 rounded p-3">
+            <div class="text-xs text-gray-600">盈亏比</div>
+            <div id="rPF" class="text-xl font-bold num"></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div class="metric-card bg-orange-50 rounded p-3">
+            <div class="text-xs text-gray-600">最大回撤</div>
+            <div id="rMDD" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-purple-50 rounded p-3">
+            <div class="text-xs text-gray-600">交易次数</div>
+            <div id="rTrades" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-amber-50 rounded p-3 border border-amber-200">
+            <div class="text-xs text-amber-700 font-semibold">最大投入金额</div>
+            <div id="rMaxInv" class="text-xl font-bold num"></div>
+            <div id="rMaxInvPct" class="text-xs text-gray-500"></div>
+          </div>
+          <div class="metric-card bg-amber-50 rounded p-3 border border-amber-200">
+            <div class="text-xs text-amber-700 font-semibold">当前投入金额</div>
+            <div id="rCurInv" class="text-xl font-bold num"></div>
+            <div id="rCurInvPct" class="text-xs text-gray-500"></div>
+          </div>
+        </div>
+        <div id="equityChart" style="width:100%;height:420px;min-width:0;"></div>
+        <details class="mt-3">
+          <summary class="cursor-pointer text-sm text-gray-600 hover:text-gray-800">查看交易明细</summary>
+          <div id="tradeList" class="mt-2 max-h-64 overflow-auto text-xs"></div>
+        </details>
+      </div>
+    </div>
+
+    <!-- ============ AI 智能寻优 ============ -->
+    <div data-mode-pane="ai" class="hidden">
+      <div class="bg-blue-50 border border-blue-200 rounded p-3 mb-3 text-sm text-gray-700 leading-relaxed">
+        🤖 <strong>券商级四阶段寻优</strong>：① 粗扫 ~1500 种参数 → ② <strong>Walk-Forward 60/40</strong> 验证 Top 20 鲁棒性 → ③ 首仓位每 5% 细扫 → ④ <strong>蒙特卡洛 300 次重采样</strong> 估算收益分布。目标可选：
+        <code class="bg-white px-1 rounded">🚀 收益最大化</code>
+        <code class="bg-white px-1 rounded">📈 超额优先</code>
+        <code class="bg-white px-1 rounded">⚖️ 平衡</code>
+      </div>
+      <div class="flex flex-wrap items-end gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">回测周期</label>
+          <select id="aiPeriod">
+            <option value="20">过去 1 个月</option>
+            <option value="60" selected>过去 3 个月</option>
+            <option value="120">过去 6 个月</option>
+            <option value="250">过去 1 年</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">优化目标</label>
+          <select id="aiObjective">
+            <option value="return" selected>🚀 收益最大化</option>
+            <option value="excess">📈 超额收益优先</option>
+            <option value="balanced">⚖️ 收益风险平衡</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">总本金 (元)</label>
+          <input id="aiCapital" type="number" value="100000" class="w-32" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">手续费 (万)</label>
+          <input id="aiFee" type="number" step="0.1" value="1" class="w-20" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">滑点 (万)</label>
+          <input id="aiSlip" type="number" step="0.1" value="2" class="w-20" />
+        </div>
+        <button id="btnAiOptimize" class="primary">开始 AI 寻优</button>
+        <div id="aiStatus" class="text-sm text-gray-600"></div>
+      </div>
+      <div id="aiProgress" class="hidden mb-3">
+        <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div id="aiBar" class="bg-blue-500 h-2 transition-all" style="width:0%"></div>
+        </div>
+        <div id="aiProgressText" class="text-xs text-gray-500 mt-1"></div>
+      </div>
+
+      <div id="aiResult" class="hidden">
+        <div id="aiContext" class="text-xs text-gray-700 mb-2 bg-amber-50 border border-amber-200 rounded p-2 leading-relaxed"></div>
+        <div id="aiRobustness" class="hidden bg-gradient-to-r from-indigo-50 to-violet-50 rounded-lg p-3 mb-3 border border-indigo-200 text-xs text-gray-700 leading-relaxed"></div>
+        <div class="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4 mb-3">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 class="text-lg font-bold text-gray-800">🏆 最优网格配置</h3>
+            <div class="flex gap-2">
+              <button id="btnApplyToManual" class="ghost text-sm">↓ 应用到手动面板</button>
+              <button id="btnCopyParams" class="primary text-sm">📋 一键复制全部参数</button>
+            </div>
+          </div>
+          <div id="aiParams" class="grid grid-cols-2 md:grid-cols-4 gap-2"></div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div class="metric-card bg-blue-50 rounded p-3">
+            <div class="text-xs text-gray-600">累计收益</div>
+            <div id="aiRet" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-emerald-50 rounded p-3 border-2 border-emerald-200">
+            <div class="text-xs text-emerald-700 font-semibold">超额收益 (vs 买入持有)</div>
+            <div id="aiExcess" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-blue-50 rounded p-3">
+            <div class="text-xs text-gray-600">年化收益</div>
+            <div id="aiAnn" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-green-50 rounded p-3">
+            <div class="text-xs text-gray-600">夏普比率</div>
+            <div id="aiSharpe" class="text-xl font-bold num"></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div class="metric-card bg-green-50 rounded p-3">
+            <div class="text-xs text-gray-600">索提诺比率 (Sortino)</div>
+            <div id="aiSortino" class="text-xl font-bold num"></div>
+            <div class="text-xs text-gray-500 mt-0.5">下行波动调整后收益</div>
+          </div>
+          <div class="metric-card bg-green-50 rounded p-3">
+            <div class="text-xs text-gray-600">卡玛比率 (Calmar)</div>
+            <div id="aiCalmar" class="text-xl font-bold num"></div>
+            <div class="text-xs text-gray-500 mt-0.5">年化收益 / 最大回撤</div>
+          </div>
+          <div class="metric-card bg-cyan-50 rounded p-3">
+            <div class="text-xs text-gray-600">胜率 (Win Rate)</div>
+            <div id="aiWinRate" class="text-xl font-bold num"></div>
+            <div id="aiWinDetail" class="text-xs text-gray-500 mt-0.5"></div>
+          </div>
+          <div class="metric-card bg-cyan-50 rounded p-3">
+            <div class="text-xs text-gray-600">盈亏比 (Profit Factor)</div>
+            <div id="aiPF" class="text-xl font-bold num"></div>
+            <div class="text-xs text-gray-500 mt-0.5">总盈利 / 总亏损</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+          <div class="metric-card bg-gray-50 rounded p-3">
+            <div class="text-xs text-gray-600">买入持有</div>
+            <div id="aiHold" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-orange-50 rounded p-3">
+            <div class="text-xs text-gray-600">最大回撤</div>
+            <div id="aiMDD" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-purple-50 rounded p-3">
+            <div class="text-xs text-gray-600">交易次数</div>
+            <div id="aiTradesCount" class="text-xl font-bold num"></div>
+          </div>
+          <div class="metric-card bg-amber-50 rounded p-3 border border-amber-200">
+            <div class="text-xs text-amber-700 font-semibold">最大投入金额</div>
+            <div id="aiMaxInv" class="text-xl font-bold num"></div>
+            <div id="aiMaxInvPct" class="text-xs text-gray-500"></div>
+          </div>
+          <div class="metric-card bg-amber-50 rounded p-3 border border-amber-200">
+            <div class="text-xs text-amber-700 font-semibold">当前投入金额</div>
+            <div id="aiCurInv" class="text-xl font-bold num"></div>
+            <div id="aiCurInvPct" class="text-xs text-gray-500"></div>
+          </div>
+        </div>
+        <div id="aiEquityChart" style="width:100%;height:420px;min-width:0;"></div>
+
+        <details class="mt-3 bg-gray-50 rounded p-3" open>
+          <summary class="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900">📅 历史同价周期回测（用同样的最优配置在历史相似价位运行，验证策略鲁棒性）</summary>
+          <div id="aiAnalogContent" class="mt-3"></div>
+        </details>
+
+        <details class="mt-3 bg-gray-50 rounded p-3">
+          <summary class="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900">📊 查看 Top 5 备选配置（评分接近的次优方案）</summary>
+          <div id="aiTopK" class="mt-3 overflow-x-auto"></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d=2) => (v == null || isNaN(v)) ? '-' : (+v).toFixed(d);
+const fmtPct = (v, d=2) => (v == null || isNaN(v)) ? '-' : ((v*100).toFixed(d) + '%');
+const fmtYuan = (v) => {
+  if (v == null || isNaN(v)) return '-';
+  if (Math.abs(v) >= 1e4) return (v/1e4).toFixed(2) + ' 万';
+  return Math.round(v).toLocaleString() + ' 元';
+};
+
+// 查找历史同价周期：起始价在 currentPrice ±tolerance 范围内、长度为 periodLen 的非重叠时间段
+function findAnalogPeriods(rows, periodLen, currentPrice, tolerance = 0.10, maxN = 5) {
+  if (rows.length < periodLen * 2) return [];
+  const minPrice = currentPrice * (1 - tolerance);
+  const maxPrice = currentPrice * (1 + tolerance);
+  const results = [];
+  // 从最近往前扫，跳过最末段（已是默认回测期）
+  const startFrom = rows.length - periodLen - 1;
+  for (let i = startFrom; i >= 0; i--) {
+    if (results.length >= maxN) break;
+    const startPrice = rows[i].close;
+    if (startPrice >= minPrice && startPrice <= maxPrice) {
+      // 与已找到周期不重叠（覆盖检查）
+      const overlap = results.some(r => !(i + periodLen <= r.startIdx || i >= r.endIdx));
+      if (overlap) continue;
+      results.push({
+        startIdx: i,
+        endIdx: i + periodLen,
+        startDate: rows[i].date,
+        endDate: rows[Math.min(i + periodLen - 1, rows.length - 1)].date,
+        startPrice,
+        rows: rows.slice(i, i + periodLen),
+      });
+    }
+  }
+  return results;
+}
+
+function jsonpFlex(buildUrl, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const cb = 'jsonp_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { reject(new Error('请求超时')); cleanup(); }}, timeoutMs);
+    window[cb] = (data) => { done = true; clearTimeout(timer); resolve(data); cleanup(); };
+    script.onerror = () => { if (!done) { clearTimeout(timer); reject(new Error('脚本加载失败')); cleanup(); }};
+    function cleanup() { try { delete window[cb]; } catch {} if (script.parentNode) script.remove(); }
+    script.src = buildUrl(cb);
+    document.body.appendChild(script);
+  });
+}
+
+function symbolOf(code) {
+  code = String(code).trim();
+  if (!/^\d{6}$/.test(code)) throw new Error('代码必须为 6 位数字');
+  const f = code[0];
+  return ((f === '5' || f === '6') ? 'sh' : 'sz') + code;
+}
+
+// 腾讯 K 线接口（UTF-8 JSON via _callback JSONP）
+async function fetchKline(code, days = 800) {
+  const sym = symbolOf(code);
+  const data = await jsonpFlex(cb =>
+    `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${sym},day,,,${days},qfq&_callback=${cb}`,
+    12000
+  );
+  if (!data || data.code !== 0) throw new Error('Tencent 接口返回错误');
+  const obj = data.data?.[sym];
+  if (!obj) throw new Error('返回数据为空（代码可能不存在）');
+  const klines = obj.qfqday || obj.day || [];
+  if (!klines.length) throw new Error('K 线为空');
+  let prev = null;
+  const rows = klines.map(k => {
+    const open = +k[1], close = +k[2], high = +k[3], low = +k[4];
+    const amp = prev ? 100 * (high - low) / prev : 100 * (high - low) / Math.max(open, 1e-9);
+    const chgPct = prev ? 100 * (close - prev) / prev : 0;
+    const row = { date: k[0], open, close, high, low, vol: +k[5], amount: NaN, amp, chgPct, chg: prev ? close - prev : 0, turnover: NaN };
+    prev = close;
+    return row;
+  });
+  return { code, rows };
+}
+
+/* 技术指标 */
+function sma(arr, n) {
+  const out = []; let s = 0;
+  for (let i = 0; i < arr.length; i++) {
+    s += arr[i]; if (i >= n) s -= arr[i-n];
+    out.push(i >= n - 1 ? s / n : NaN);
+  }
+  return out;
+}
+function stddev(arr) {
+  const m = arr.reduce((a,b) => a+b, 0) / arr.length;
+  return Math.sqrt(arr.reduce((a,b) => a + (b-m)**2, 0) / arr.length);
+}
+function median(arr) {
+  const a = arr.filter(v => !isNaN(v)).sort((x,y) => x-y);
+  if (!a.length) return NaN;
+  const m = Math.floor(a.length/2);
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function adx(rows, n=14) {
+  const len = rows.length;
+  if (len <= n+1) return new Array(len).fill(NaN);
+  const tr = new Array(len).fill(0), pDM = new Array(len).fill(0), mDM = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    const h = rows[i].high, l = rows[i].low, pc = rows[i-1].close;
+    tr[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    const upMove = rows[i].high - rows[i-1].high;
+    const downMove = rows[i-1].low - rows[i].low;
+    pDM[i] = (upMove > downMove && upMove > 0) ? upMove : 0;
+    mDM[i] = (downMove > upMove && downMove > 0) ? downMove : 0;
+  }
+  const sTR = new Array(len).fill(NaN), sP = new Array(len).fill(NaN), sM = new Array(len).fill(NaN);
+  let sumTR=0, sumP=0, sumM=0;
+  for (let i = 1; i <= n; i++) { sumTR += tr[i]; sumP += pDM[i]; sumM += mDM[i]; }
+  sTR[n] = sumTR; sP[n] = sumP; sM[n] = sumM;
+  for (let i = n+1; i < len; i++) {
+    sTR[i] = sTR[i-1] - sTR[i-1]/n + tr[i];
+    sP[i]  = sP[i-1]  - sP[i-1]/n  + pDM[i];
+    sM[i]  = sM[i-1]  - sM[i-1]/n  + mDM[i];
+  }
+  const pDI = sP.map((v,i) => (v && sTR[i]) ? 100*v/sTR[i] : NaN);
+  const mDI = sM.map((v,i) => (v && sTR[i]) ? 100*v/sTR[i] : NaN);
+  const dx = pDI.map((v,i) => {
+    if (isNaN(v) || isNaN(mDI[i])) return NaN;
+    const sum = v + mDI[i];
+    return sum === 0 ? 0 : 100 * Math.abs(v - mDI[i]) / sum;
+  });
+  const out = new Array(len).fill(NaN);
+  let firstIdx = -1;
+  for (let i = 0; i < len; i++) if (!isNaN(dx[i])) { firstIdx = i; break; }
+  if (firstIdx < 0 || firstIdx + n >= len) return out;
+  let s = 0;
+  for (let i = firstIdx; i < firstIdx + n; i++) s += dx[i];
+  out[firstIdx + n - 1] = s / n;
+  for (let i = firstIdx + n; i < len; i++) out[i] = (out[i-1] * (n-1) + dx[i]) / n;
+  return out;
+}
+function rSquared(prices) {
+  const n = prices.length;
+  const y = prices.map(p => Math.log(p));
+  let sx=0, sy=0, sxy=0, sxx=0, syy=0;
+  for (let i = 0; i < n; i++) { sx += i; sy += y[i]; sxy += i*y[i]; sxx += i*i; syy += y[i]*y[i]; }
+  const num = n*sxy - sx*sy;
+  const den = Math.sqrt((n*sxx - sx*sx) * (n*syy - sy*sy));
+  if (den === 0) return 0;
+  const r = num/den; return r*r;
+}
+function annVol(prices) {
+  if (prices.length < 2) return 0;
+  const rets = [];
+  for (let i = 1; i < prices.length; i++) rets.push(Math.log(prices[i]/prices[i-1]));
+  return stddev(rets) * Math.sqrt(252);
+}
+function bbWidth(prices, n=20) {
+  const ma = sma(prices, n);
+  const out = [];
+  for (let i = 0; i < prices.length; i++) {
+    if (i < n-1) { out.push(NaN); continue; }
+    out.push((4*stddev(prices.slice(i-n+1, i+1))) / ma[i]);
+  }
+  return out;
+}
+function maxDrawdown(prices) {
+  let peak = prices[0], mdd = 0;
+  for (let i = 0; i < prices.length; i++) {
+    peak = Math.max(peak, prices[i]);
+    mdd = Math.max(mdd, (peak - prices[i]) / peak);
+  }
+  return mdd;
+}
+
+/* 适用性评分 */
+function evaluateGridSuitability(rows, winSize = 120) {
+  const prices = rows.map(r => r.close);
+  const n = prices.length;
+  const tail = (k) => prices.slice(Math.max(0, n-k));
+  const winN = Math.min(winSize, n);
+  const win = tail(winN);
+
+  const adxArr = adx(rows);
+  const adxLast = adxArr[adxArr.length-1];
+  const r2 = rSquared(win);
+  const vol = annVol(win);
+  const bbw = bbWidth(prices, 20);
+  const bbwLast = bbw[bbw.length-1];
+  const bbwMed = median(bbw.slice(-winN));
+  const refN = Math.min(250, n);
+  const refTail = tail(refN);
+  const high = Math.max(...refTail);
+  const low = Math.min(...refTail);
+  const cur = prices[n-1];
+  const posPct = (high - low) > 0 ? (cur - low) / (high - low) : 0.5;
+  const ampSlice = rows.slice(-winN);
+  const ampMean = ampSlice.reduce((a,r) => a + (r.amp || 0), 0) / ampSlice.length;
+  const mdd = maxDrawdown(refTail);
+
+  const sADX = Math.max(0, Math.min(100, (35 - (isNaN(adxLast) ? 30 : adxLast)) / 15 * 100));
+  const sR2  = Math.max(0, Math.min(100, (0.7 - r2) / 0.5 * 100));
+  let sVol;
+  const volPct = vol * 100;
+  if (volPct < 10) sVol = volPct / 10 * 50;
+  else if (volPct <= 30) sVol = 50 + (volPct - 10) / 20 * 50;
+  else if (volPct <= 50) sVol = 100 - (volPct - 30) / 20 * 40;
+  else sVol = Math.max(0, 60 - (volPct - 50));
+  sVol = Math.max(0, Math.min(100, sVol));
+  const bbwRatio = (bbwMed > 0) ? bbwLast / bbwMed : 1;
+  const sBBW = Math.max(0, Math.min(100, 100 - Math.abs(bbwRatio - 1) * 80));
+  const sPos = Math.max(0, Math.min(100, (1 - posPct) * 100));
+
+  const weights = { ADX:0.30, R2:0.25, Vol:0.20, Pos:0.15, BBW:0.10 };
+  const total = sADX*weights.ADX + sR2*weights.R2 + sVol*weights.Vol + sPos*weights.Pos + sBBW*weights.BBW;
+
+  let label, tag;
+  if (total >= 70) { label = '✅ 适合网格交易'; tag = 'tag-good'; }
+  else if (total >= 50) { label = '⚠️ 谨慎参与'; tag = 'tag-warn'; }
+  else { label = '❌ 不建议网格'; tag = 'tag-bad'; }
+
+  const reasons = [];
+  if (!isNaN(adxLast)) {
+    if (adxLast > 25) reasons.push(`ADX=${fmt(adxLast,1)} 处于趋势区间，价格单边可能性较大`);
+    else if (adxLast < 20) reasons.push(`ADX=${fmt(adxLast,1)} 表明处于震荡市`);
+  }
+  if (r2 > 0.6) reasons.push(`R²=${fmt(r2,2)} 走势接近一条直线，单边特征明显`);
+  else if (r2 < 0.3) reasons.push(`R²=${fmt(r2,2)} 走势凌乱无方向`);
+  if (volPct < 15) reasons.push(`年化波动率仅 ${fmt(volPct,1)}%，波动太小不利于网格盈利`);
+  else if (volPct > 50) reasons.push(`年化波动率高达 ${fmt(volPct,1)}%，风险偏大`);
+  else if (volPct >= 20 && volPct <= 40) reasons.push(`年化波动率 ${fmt(volPct,1)}% 处于网格友好区间`);
+  if (posPct > 0.8) reasons.push(`当前价位处于近一年高位（${fmt(posPct*100,0)}%分位），追高风险大`);
+  else if (posPct < 0.3) reasons.push(`当前价位处于近一年低位（${fmt(posPct*100,0)}%分位），介入位置较好`);
+
+  return {
+    total, label, tag, reasons,
+    metrics: { adx: adxLast, r2, vol: volPct, bbwRatio, posPct, ampMean, mdd, high250: high, low250: low, cur },
+    breakdown: {
+      '震荡性 (ADX)': { score: sADX, w: weights.ADX, raw: `ADX=${fmt(adxLast,1)}` },
+      '方向性 (R²)':  { score: sR2,  w: weights.R2,  raw: `R²=${fmt(r2,2)}` },
+      '波动率':       { score: sVol, w: weights.Vol, raw: `年化=${fmt(volPct,1)}%` },
+      '位置安全度':   { score: sPos, w: weights.Pos, raw: `${fmt(posPct*100,0)}% 分位` },
+      '波动稳定性':   { score: sBBW, w: weights.BBW, raw: `BBW比=${fmt(bbwRatio,2)}` },
+    }
+  };
+}
+
+function recommendGrid(rows, evalResult) {
+  const m = evalResult.metrics;
+  const high = m.high250 * 1.03;
+  const low  = m.low250  * 0.97;
+  const stepPct = Math.max(0.5, Math.min(3, (m.ampMean || 1.5) * 0.6)) / 100;
+  const gridNum = Math.max(10, Math.min(50, Math.round(Math.log(high/low) / Math.log(1+stepPct))));
+  // 当前价位越高，初始仓位越小（避免追高）
+  const initRatio = Math.max(0.2, Math.min(0.8, 1 - (m.posPct || 0.5)));
+  const benchmark = +((high + low) / 2).toFixed(3);
+  return { high: +high.toFixed(3), low: +low.toFixed(3), gridNum, stepPct, initRatio, benchmark };
+}
+
+/* 回测引擎（含滑点 + 自定义首笔/每格金额 + 基准价等待 + 年化 + 夏普） */
+function gridBacktest(rows, params) {
+  const {
+    capital, high, low, gridNum, geometric, feeRate, slippage = 0,
+    initialBuy, perGridAmount, benchmark,
+  } = params;
+
+  const buyFactor = 1 + feeRate + slippage;   // 实盘买入实际成本
+  const sellFactor = 1 - feeRate - slippage;  // 实盘卖出实际所得
+
+  // 网格线
+  const lines = [];
+  for (let i = 0; i <= gridNum; i++) {
+    const r = i / gridNum;
+    lines.push(geometric ? low * Math.pow(high/low, r) : low + (high-low) * r);
+  }
+  const findZone = (p) => {
+    if (p <= lines[0]) return 0;
+    if (p >= lines[gridNum]) return gridNum - 1;
+    for (let i = 0; i < gridNum; i++) if (p >= lines[i] && p < lines[i+1]) return i;
+    return gridNum - 1;
+  };
+
+  let cash = capital, shares = 0;
+  const trades = [], equity = [];
+  let lastZone = -1;
+  let entered = false;
+  const maxWait = Math.min(30, rows.length - 1);
+  let maxInvested = 0;  // 历史峰值的已用资金 (= 资本 - 现金)
+
+  for (let t = 0; t < rows.length; t++) {
+    const p = rows[t].close;
+    if (!entered) {
+      // 基准价等待逻辑：若设了基准价且尚未到达，最多等 30 天；否则首日入场
+      const reach = !benchmark || p <= benchmark || t >= maxWait;
+      if (reach) {
+        let buyShares = Math.floor(initialBuy / p / buyFactor / 100) * 100;
+        if (buyShares * p * buyFactor > cash) buyShares -= 100;
+        if (buyShares > 0) {
+          cash -= buyShares * p * buyFactor;
+          shares += buyShares;
+          trades.push({ date: rows[t].date, type: '建仓', price: p, shares: buyShares, cash: cash.toFixed(0) });
+        }
+        lastZone = findZone(p);
+        entered = true;
+      }
+    } else {
+      const zone = findZone(p);
+      if (zone !== lastZone) {
+        const diff = zone - lastZone;
+        if (diff < 0) {
+          // 下跌穿过 |diff| 格 → 买入
+          for (let i = 0; i < -diff; i++) {
+            let buyShares = Math.floor(perGridAmount / p / buyFactor / 100) * 100;
+            if (buyShares <= 0) break;
+            const cost = buyShares * p * buyFactor;
+            if (cost > cash) {
+              buyShares = Math.floor(cash / p / buyFactor / 100) * 100;
+              if (buyShares <= 0) break;
+            }
+            cash -= buyShares * p * buyFactor;
+            shares += buyShares;
+            trades.push({ date: rows[t].date, type: '买入', price: p, shares: buyShares, cash: cash.toFixed(0) });
+          }
+        } else {
+          // 上涨穿过 diff 格 → 卖出
+          for (let i = 0; i < diff; i++) {
+            let sellShares = Math.floor(perGridAmount / p / 100) * 100;
+            if (sellShares > shares) sellShares = Math.floor(shares / 100) * 100;
+            if (sellShares <= 0) break;
+            cash += sellShares * p * sellFactor;
+            shares -= sellShares;
+            trades.push({ date: rows[t].date, type: '卖出', price: p, shares: sellShares, cash: cash.toFixed(0) });
+          }
+        }
+        lastZone = zone;
+      }
+    }
+    const invested = capital - cash;
+    if (invested > maxInvested) maxInvested = invested;
+    equity.push({ date: rows[t].date, value: cash + shares * p });
+  }
+
+  const finalInvested = capital - cash;  // 当前已用资金
+  const finalValue = equity[equity.length-1].value;
+  const totalReturn = (finalValue - capital) / capital;
+  let peak = equity[0].value, mdd = 0;
+  for (const e of equity) { peak = Math.max(peak, e.value); mdd = Math.max(mdd, (peak - e.value) / peak); }
+
+  // 年化收益（以 252 个交易日为一年）
+  const tradingDays = rows.length;
+  const years = tradingDays / 252;
+  const annReturn = years > 0 ? Math.pow(1 + Math.max(-0.99, totalReturn), 1/years) - 1 : 0;
+
+  // 夏普比率（无风险年化 2.5%）
+  const dailyRets = [];
+  for (let i = 1; i < equity.length; i++) {
+    if (equity[i-1].value > 0) dailyRets.push((equity[i].value - equity[i-1].value) / equity[i-1].value);
+  }
+  let sharpe = 0;
+  if (dailyRets.length > 1) {
+    const meanR = dailyRets.reduce((a,b)=>a+b,0) / dailyRets.length;
+    const stdR = Math.sqrt(dailyRets.reduce((a,b)=>a+(b-meanR)**2,0) / dailyRets.length);
+    if (stdR > 1e-10) sharpe = (meanR - 0.025/252) / stdR * Math.sqrt(252);
+  }
+
+  // 买入持有基准（同样含手续费 + 滑点）
+  const bhShares = Math.floor(capital / rows[0].close / buyFactor / 100) * 100;
+  const bhCost = bhShares * rows[0].close * buyFactor;
+  const bhFinal = bhShares * rows[rows.length-1].close + (capital - bhCost);
+  const buyHoldReturn = (bhFinal - capital) / capital;
+
+  // 券商级指标
+  const sortino = computeSortino(equity);
+  const calmar = (mdd < 1e-6) ? (annReturn > 0 ? 99 : 0) : annReturn / mdd;
+  const tradeStats = computeTradeStats(trades);
+
+  return {
+    equity, trades, totalReturn, annReturn, sharpe, sortino, calmar, mdd,
+    buyHoldReturn, lines, maxInvested, finalInvested, finalShares: shares, finalCash: cash,
+    ...tradeStats,
+  };
+}
+
+/* 图表 */
+let kChart, eqChart;
+function renderKChart(meta, rows, gridLines) {
+  if (!kChart) kChart = echarts.init($('kchart'));
+  const dates = rows.map(r => r.date);
+  const kdata = rows.map(r => [r.open, r.close, r.low, r.high]);
+  const markLines = (gridLines || []).map(p => ({
+    yAxis: p, lineStyle: { color: '#94a3b8', type: 'dashed', width: 1 },
+    label: { formatter: p.toFixed(3), position: 'end', fontSize: 10 }
+  }));
+  kChart.setOption({
+    title: { text: `${meta.name} (${meta.code})`, left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    grid: { left: 50, right: 60, top: 40, bottom: 60 },
+    xAxis: { type: 'category', data: dates, scale: true, boundaryGap: false },
+    yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: '#f3f4f6' } } },
+    dataZoom: [{ type: 'inside', start: 50, end: 100 }, { type: 'slider', height: 20, bottom: 20 }],
+    series: [{
+      name: 'K线', type: 'candlestick', data: kdata,
+      itemStyle: { color: '#ef4444', color0: '#10b981', borderColor: '#ef4444', borderColor0: '#10b981' },
+      markLine: markLines.length ? { symbol: 'none', data: markLines, silent: true } : undefined
+    }]
+  }, true);
+}
+function renderEquityChart(equity, rows, capital) {
+  if (!eqChart) eqChart = echarts.init($('equityChart'));
+  const dates = equity.map(e => e.date);
+  // 网格策略：累计收益率 (%) = (当日总资产 - 本金) / 本金 × 100
+  const gridReturns = equity.map(e => (e.value - capital) / capital * 100);
+  // 买入持有：同样换算成累计收益率 (%)
+  const p0 = rows[0].close;
+  const bhShares = Math.floor(capital / p0 / 100) * 100;
+  const bhCashLeft = capital - bhShares * p0;
+  const bhReturns = rows.map(r => (bhShares * r.close + bhCashLeft - capital) / capital * 100);
+  eqChart.setOption({
+    title: { text: '回测累计收益率走势', left: 'center', top: 4, textStyle: { fontSize: 13, fontWeight: 600 } },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', label: { backgroundColor: '#6b7280' } },
+      formatter: (params) => {
+        let html = `<div style="font-size:12px;line-height:1.6"><strong>${params[0].axisValue}</strong>`;
+        params.forEach(p => {
+          const v = (+p.value).toFixed(2);
+          const color = +p.value >= 0 ? '#16a34a' : '#dc2626';
+          html += `<br/>${p.marker}${p.seriesName}: <strong style="color:${color}">${v}%</strong>`;
+        });
+        if (params.length >= 2) {
+          const diff = (+params[0].value) - (+params[1].value);
+          const color = diff >= 0 ? '#16a34a' : '#dc2626';
+          html += `<br/><span style="color:#6b7280">超额：</span><strong style="color:${color}">${(diff>=0?'+':'')+diff.toFixed(2)}%</strong>`;
+        }
+        return html + '</div>';
+      },
+    },
+    legend: { data: ['网格策略', '买入持有'], top: 30 },
+    grid: { left: 60, right: 30, top: 70, bottom: 50 },
+    xAxis: { type: 'category', data: dates, boundaryGap: false, axisLabel: { fontSize: 11 } },
+    yAxis: {
+      type: 'value', scale: true,
+      axisLabel: { formatter: (v) => v.toFixed(2) + '%', fontSize: 11 },
+      splitLine: { lineStyle: { color: '#f3f4f6' } },
+    },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', height: 18, bottom: 12 },
+    ],
+    series: [
+      { name: '网格策略', type: 'line', data: gridReturns, showSymbol: false, smooth: false, lineStyle: { color: '#3b82f6', width: 2 }, areaStyle: { color: 'rgba(59,130,246,0.08)' } },
+      { name: '买入持有', type: 'line', data: bhReturns,   showSymbol: false, smooth: false, lineStyle: { color: '#9ca3af', width: 2, type: 'dashed' } },
+    ],
+  }, true);
+  setTimeout(() => eqChart.resize(), 50);
+}
+
+/* 交互 */
+let state = { meta: null, rows: null, evalResult: null, recommend: null };
+
+function showScore(ev, winSize) {
+  $('scorePanel').classList.remove('hidden');
+  $('scoreNum').textContent = ev.total.toFixed(1);
+  $('scoreNum').style.color = ev.total >= 70 ? '#16a34a' : ev.total >= 50 ? '#d97706' : '#dc2626';
+  $('scoreLabel').innerHTML = `<span class="badge ${ev.tag}">${ev.label}</span>`;
+  $('scoreReason').textContent = ev.reasons.join('；') || '暂无突出风险';
+  if (winSize) $('scoreWinText').textContent = `近 ${winSize} 日`;
+  $('scoreBreakdown').innerHTML = Object.entries(ev.breakdown).map(([k,v]) =>
+    `<div class="bg-gray-50 rounded p-2">
+      <div class="text-xs text-gray-500">${k} · 权重 ${(v.w*100).toFixed(0)}%</div>
+      <div class="flex items-baseline justify-between">
+        <span class="font-bold num">${v.score.toFixed(0)}</span>
+        <span class="text-xs text-gray-500">${v.raw}</span>
+      </div>
+    </div>`
+  ).join('');
+}
+function fillRecommend(rec) {
+  $('gridHigh').value = rec.high;
+  $('gridLow').value = rec.low;
+  $('gridNum').value = rec.gridNum;
+  if (rec.benchmark != null) $('benchmark').value = rec.benchmark;
+  const capital = +$('capital').value || 100000;
+  const initBuy = Math.round(capital * (rec.initRatio || 0.5) / 100) * 100;
+  $('initialBuy').value = initBuy;
+  $('perGridAmt').value = Math.round((capital - initBuy) / rec.gridNum);
+}
+
+function daysBetween(d1, d2) {
+  const t1 = new Date(d1).getTime();
+  const t2 = new Date(d2).getTime();
+  return Math.max(60, Math.ceil((t2 - t1) / 86400000));
+}
+
+async function onLoad(presetName) {
+  const code = $('etfCode').value.trim();
+  if (!code) return alert('请输入 ETF 代码');
+  const winSize = +$('winSize').value;
+  const ds = $('dateStart').value;
+  const de = $('dateEnd').value || new Date().toISOString().slice(0,10);
+  const daysSpan = ds ? daysBetween(ds, de) : 0;
+  // 拉取记录数：至少覆盖评分窗口（win*1.5）+ 用户选择的日期范围
+  const fetchDays = Math.min(1500, Math.max(Math.ceil(winSize * 1.5) + 30, daysSpan + 30));
+
+  $('btnLoad').disabled = true;
+  $('loadStatus').innerHTML = '<span class="loader"></span> 加载中...';
+  try {
+    const { rows: allRows } = await fetchKline(code, fetchDays);
+    if (!allRows.length) throw new Error('返回数据为空');
+    const rows = ds ? allRows.filter(r => r.date >= ds && r.date <= de) : allRows;
+    if (rows.length < 30) throw new Error('该时间段数据过少（不足 30 个交易日）');
+
+    // 评分仅基于最近 win*1.5 个交易日，与排行榜完全对齐
+    const evalDays = Math.min(rows.length, Math.ceil(winSize * 1.5));
+    const evalRows = rows.slice(-evalDays);
+
+    const name = presetName || code;
+    state.meta = { name, code };
+    state.rows = rows;
+    state.winSize = winSize;
+    state.evalResult = evaluateGridSuitability(evalRows, winSize);
+    state.recommend = recommendGrid(evalRows, state.evalResult);
+    document.title = `${name} (${code}) - ETF 网格分析`;
+
+    showScore(state.evalResult, winSize);
+    $('chartPanel').classList.remove('hidden');
+    $('backtestPanel').classList.remove('hidden');
+    renderKChart(state.meta, rows, []);
+    fillRecommend(state.recommend);
+    $('loadStatus').innerHTML = `<span class="text-green-600">✓ 已加载 ${name}（${rows.length} 个交易日；评分基于近 ${evalDays} 日）</span>`;
+  } catch (e) {
+    $('loadStatus').innerHTML = `<span class="text-red-600">✗ ${e.message}</span>`;
+    console.error(e);
+  } finally {
+    $('btnLoad').disabled = false;
+  }
+}
+
+// 切换评分窗口：不重新拉数据，只在当前数据上重算评分
+function recomputeScore() {
+  if (!state.rows) return;
+  const winSize = +$('winSize').value;
+  const evalDays = Math.min(state.rows.length, Math.ceil(winSize * 1.5));
+  const evalRows = state.rows.slice(-evalDays);
+  state.winSize = winSize;
+  state.evalResult = evaluateGridSuitability(evalRows, winSize);
+  state.recommend = recommendGrid(evalRows, state.evalResult);
+  showScore(state.evalResult, winSize);
+}
+
+function onBacktest() {
+  if (!state.rows) return;
+  const capital = +$('capital').value;
+  const initialBuy = +$('initialBuy').value || capital * 0.5;
+  const high = +$('gridHigh').value, low = +$('gridLow').value;
+  const gridNum = +$('gridNum').value;
+  const perGridAmount = +$('perGridAmt').value || (capital - initialBuy) / gridNum;
+  const benchmark = +$('benchmark').value || null;
+  const feeRate = (+$('feeRate').value) / 10000;
+  const slippage = (+$('slippage').value) / 10000;
+  const geometric = $('gridType').value === 'geo';
+  if (!(high > low) || gridNum < 2 || capital <= 0) return alert('参数不合法');
+  if (initialBuy > capital) return alert('首笔建仓金额不能超过总本金');
+
+  const res = gridBacktest(state.rows, {
+    capital, initialBuy, perGridAmount, benchmark,
+    high, low, gridNum, geometric, feeRate, slippage
+  });
+  renderKChart(state.meta, state.rows, res.lines);
+  renderEquityChart(res.equity, state.rows, capital);
+
+  $('backtestResult').classList.remove('hidden');
+  const setVal = (id, v, color) => { const el = $(id); el.textContent = v; if (color) el.style.color = color; };
+  const retColor = (v) => v >= 0 ? '#16a34a' : '#dc2626';
+  setVal('rGrid', fmtPct(res.totalReturn), retColor(res.totalReturn));
+  setVal('rAnn', fmtPct(res.annReturn), retColor(res.annReturn));
+  setVal('rSharpe', res.sharpe.toFixed(2), res.sharpe >= 1 ? '#16a34a' : res.sharpe >= 0 ? '#d97706' : '#dc2626');
+  setVal('rHold', fmtPct(res.buyHoldReturn), retColor(res.buyHoldReturn));
+  setVal('rSortino', res.sortino >= 99 ? '∞' : res.sortino.toFixed(2), res.sortino >= 1 ? '#16a34a' : res.sortino >= 0 ? '#d97706' : '#dc2626');
+  setVal('rCalmar', res.calmar >= 99 ? '∞' : res.calmar.toFixed(2), res.calmar >= 1 ? '#16a34a' : res.calmar >= 0 ? '#d97706' : '#dc2626');
+  setVal('rWinRate', fmtPct(res.winRate, 1), res.winRate >= 0.5 ? '#16a34a' : '#d97706');
+  setVal('rPF', res.profitFactor >= 99 ? '∞' : res.profitFactor.toFixed(2), res.profitFactor >= 1.5 ? '#16a34a' : res.profitFactor >= 1 ? '#d97706' : '#dc2626');
+  setVal('rMDD', fmtPct(res.mdd), '#dc2626');
+  setVal('rTrades', res.trades.length, '#7c3aed');
+  setVal('rMaxInv', fmtYuan(Math.max(0, res.maxInvested)), '#92400e');
+  setVal('rMaxInvPct', '占总本金 ' + fmtPct(res.maxInvested / capital, 1));
+  setVal('rCurInv', fmtYuan(res.finalInvested), res.finalInvested >= 0 ? '#92400e' : '#16a34a');
+  setVal('rCurInvPct', (res.finalInvested >= 0 ? '占总本金 ' : '已超额回收 ') + fmtPct(Math.abs(res.finalInvested) / capital, 1));
+
+  const tr = res.trades.map(t =>
+    `<tr class="border-b">
+      <td class="px-2 py-1">${t.date}</td>
+      <td class="px-2 py-1"><span class="badge ${t.type==='买入'||t.type==='建仓'?'tag-bad':'tag-good'}">${t.type}</span></td>
+      <td class="px-2 py-1 num">${fmt(t.price,3)}</td>
+      <td class="px-2 py-1 num">${t.shares}</td>
+      <td class="px-2 py-1 num text-gray-500">${(+t.cash).toLocaleString()}</td>
+    </tr>`
+  ).join('');
+  $('tradeList').innerHTML = `<table class="w-full"><thead class="bg-gray-50 text-gray-600">
+    <tr><th class="px-2 py-1 text-left">日期</th><th class="px-2 py-1 text-left">动作</th><th class="px-2 py-1 text-left">价格</th><th class="px-2 py-1 text-left">数量</th><th class="px-2 py-1 text-left">剩余现金</th></tr>
+    </thead><tbody>${tr}</tbody></table>`;
+}
+
+function initDates() {
+  const today = new Date();
+  const start = new Date(); start.setFullYear(today.getFullYear() - 3);
+  $('dateStart').value = start.toISOString().slice(0,10);
+  $('dateEnd').value = today.toISOString().slice(0,10);
+}
+
+/* ============================================================
+   AI 智能寻优
+   ============================================================ */
+/* ============================================================
+   券商级专业指标
+   ============================================================ */
+// 索提诺比率：下行波动率版的夏普
+function computeSortino(equity) {
+  const rets = [];
+  for (let i = 1; i < equity.length; i++) {
+    if (equity[i-1].value > 0) rets.push((equity[i].value - equity[i-1].value) / equity[i-1].value);
+  }
+  if (rets.length < 2) return 0;
+  const mean = rets.reduce((a,b) => a+b, 0) / rets.length;
+  const downSq = rets.reduce((s,r) => s + (r < 0 ? r*r : 0), 0);
+  const downStd = Math.sqrt(downSq / rets.length);
+  if (downStd < 1e-10) return mean > 0 ? 99 : 0;
+  return (mean - 0.025/252) / downStd * Math.sqrt(252);
+}
+
+// 交易对统计 (FIFO 配对买卖)：胜率、盈亏比、平均盈亏
+function computeTradeStats(trades) {
+  const queue = [];
+  let wins = 0, losses = 0, totalGain = 0, totalLoss = 0;
+  for (const t of trades) {
+    if (t.type === '建仓' || t.type === '买入') {
+      queue.push({ price: t.price, shares: t.shares });
+    } else if (t.type === '卖出') {
+      let remaining = t.shares;
+      while (remaining > 0 && queue.length > 0) {
+        const oldest = queue[0];
+        const matched = Math.min(remaining, oldest.shares);
+        const profit = (t.price - oldest.price) * matched;
+        if (profit > 0) { wins++; totalGain += profit; }
+        else if (profit < 0) { losses++; totalLoss += -profit; }
+        oldest.shares -= matched;
+        remaining -= matched;
+        if (oldest.shares <= 0) queue.shift();
+      }
+    }
+  }
+  const round = wins + losses;
+  return {
+    winRate: round > 0 ? wins / round : 0,
+    profitFactor: totalLoss > 0 ? totalGain / totalLoss : (totalGain > 0 ? 99 : 0),
+    profitableTrades: wins,
+    losingTrades: losses,
+    avgWin: wins > 0 ? totalGain / wins : 0,
+    avgLoss: losses > 0 ? totalLoss / losses : 0,
+  };
+}
+
+// 蒙特卡洛：日收益重采样估计收益分布与回撤分布
+function monteCarloCI(equity, nSamples = 300) {
+  const rets = [];
+  for (let i = 1; i < equity.length; i++) {
+    if (equity[i-1].value > 0) rets.push((equity[i].value - equity[i-1].value) / equity[i-1].value);
+  }
+  if (rets.length < 5) return null;
+  const n = rets.length;
+  const finals = new Array(nSamples), mdds = new Array(nSamples);
+  for (let s = 0; s < nSamples; s++) {
+    let val = 1, peak = 1, mdd = 0;
+    for (let i = 0; i < n; i++) {
+      val *= (1 + rets[Math.floor(Math.random() * n)]);
+      if (val > peak) peak = val;
+      if (peak > 0) mdd = Math.max(mdd, (peak - val) / peak);
+    }
+    finals[s] = val - 1;
+    mdds[s] = mdd;
+  }
+  finals.sort((a,b) => a - b);
+  mdds.sort((a,b) => a - b);
+  const pct = (arr, p) => arr[Math.max(0, Math.min(arr.length-1, Math.floor(arr.length * p)))];
+  return {
+    p05: pct(finals, 0.05), p25: pct(finals, 0.25), p50: pct(finals, 0.50),
+    p75: pct(finals, 0.75), p95: pct(finals, 0.95),
+    ddP50: pct(mdds, 0.50), ddP95: pct(mdds, 0.95),
+    profitProb: finals.filter(x => x > 0).length / finals.length,
+  };
+}
+
+/* 评分公式：三种优化目标可切换 */
+function computeScore(res, bhReturn, mode) {
+  if (res.trades.length < 3) return -Infinity;
+  const excess = res.totalReturn - bhReturn;
+  switch (mode) {
+    case 'return':
+      // 收益最大化：原始收益占大头，回撤轻度惩罚
+      return res.totalReturn * 2.0 - res.mdd * 0.2 + excess * 0.3;
+    case 'excess':
+      // 超额收益优先：超额加权最大
+      return res.totalReturn * 1.0 + excess * 1.5 - res.mdd * 0.4;
+    case 'balanced':
+      // 收益风险平衡：收益 + 夏普 + 严控回撤
+      return res.totalReturn * 1.0 + res.sharpe * 0.4 - res.mdd * 0.8 + excess * 0.5;
+    default:
+      return res.totalReturn;
+  }
+}
+
+async function aiOptimize(rows, opt) {
+  const { capital, feeRate, slippage, onProgress, objective = 'return' } = opt;
+  const prices = rows.map(r => r.close);
+  const buyFactor = 1 + feeRate + slippage;
+  const high0 = Math.max(...prices);
+  const low0  = Math.min(...prices);
+
+  // 买入持有基准（含费用），用于计算超额收益
+  const bhShares = Math.floor(capital / prices[0] / buyFactor / 100) * 100;
+  const bhFinal = bhShares * prices[prices.length-1] + (capital - bhShares * prices[0] * buyFactor);
+  const bhReturn = (bhFinal - capital) / capital;
+
+  /* ---------- ETF 行情自适应：基于当前价位生成首笔建仓档位 ---------- */
+  const cur = prices[prices.length - 1];
+  // 价格在近期区间的位置：0=最低，1=最高
+  const pricePos = (high0 - low0) > 0 ? (cur - low0) / (high0 - low0) : 0.5;
+  // 量化区间内 ATR 比率（日均真实波幅 / 中位价），用于动态调整搜索散度
+  let atrPct = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const h = rows[i].high, l = rows[i].low, pc = rows[i-1].close;
+    atrPct += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)) / pc;
+  }
+  atrPct = atrPct / Math.max(1, rows.length - 1); // 日均波幅%
+  // 价格趋势：用对数最小二乘斜率，>0 上行，<0 下行
+  let slopeSum = 0, slopeMean = 0;
+  {
+    const y = prices.map(p => Math.log(p));
+    const n = y.length;
+    let sx=0, sy=0, sxy=0, sxx=0;
+    for (let i = 0; i < n; i++) { sx += i; sy += y[i]; sxy += i*y[i]; sxx += i*i; }
+    const slope = (n*sxy - sx*sy) / (n*sxx - sx*sx);
+    slopeMean = slope; // 日对数收益率斜率
+  }
+  // 综合基线：价格越低 + 趋势向上 → 提高底仓；反之降低
+  // 1 - pricePos 是核心，趋势项做 ±0.15 微调
+  const trendBoost = Math.max(-0.15, Math.min(0.15, slopeMean * 250)); // 年化对数收益约束在 ±15%
+  const baseRatio = Math.max(0.05, Math.min(0.95, (1 - pricePos) + trendBoost * 0.5));
+  // 散度：波动大的 ETF 多探几个档位，波动小的窄探几个
+  const spread = Math.max(0.10, Math.min(0.35, atrPct * 15));
+
+  // 候选档位：标准 7 档 + ETF 自适应 3 档（基线 ± spread）
+  const stdRatios = [0.0, 0.15, 0.30, 0.50, 0.70, 0.85, 1.0];
+  const adaptiveRatios = [
+    Math.max(0, +(baseRatio - spread).toFixed(2)),
+    +baseRatio.toFixed(2),
+    Math.min(1, +(baseRatio + spread).toFixed(2)),
+  ];
+  const initRatios = [...new Set([...stdRatios, ...adaptiveRatios])].sort((a,b) => a - b);
+
+  // 扩大的搜索空间：含负缓冲（压缩区间，捕捉更多震荡）
+  const bufHis     = [-5, 0, 5, 10];
+  const bufLos     = [-5, 0, 5, 10];
+  const gridNums   = [10, 15, 20, 25, 30, 40];
+  const gridTypes  = [true, false];
+
+  const total = bufHis.length * bufLos.length * gridNums.length * gridTypes.length * initRatios.length;
+  let done = 0, best = null;
+  const topK = [];           // 维护 Top 5 备选 (UI 展示)
+  const allCandidates = [];  // 全量候选 (WFO 二次评估)
+
+  for (const bh of bufHis) {
+    for (const bl of bufLos) {
+      const high = high0 * (1 + bh/100);
+      const low  = low0  * (1 - bl/100);
+      if (low <= 0 || low >= high) { done += gridNums.length * gridTypes.length * initRatios.length; continue; }
+      for (const gn of gridNums) {
+        for (const geo of gridTypes) {
+          for (const ir of initRatios) {
+            const initialBuy = capital * ir;
+            const perGridAmount = (capital - initialBuy) / Math.max(1, gn);
+            done++;
+            if (perGridAmount < 500 && ir < 0.95) continue;  // 全仓除外，每格过小无意义
+
+            const res = gridBacktest(rows, {
+              capital, initialBuy, perGridAmount, benchmark: null,
+              high, low, gridNum: gn, geometric: geo, feeRate, slippage
+            });
+
+            const score = computeScore(res, bhReturn, objective);
+
+            const entry = {
+              score,
+              params: { high, low, gridNum: gn, geometric: geo, initialBuy, perGridAmount, initRatio: ir, bufHi: bh, bufLo: bl },
+              res,
+              stage: 1,
+            };
+            if (!best || score > best.score) best = entry;
+
+            // 全量记录 (后续 WFO 重排需要)
+            if (score > -Infinity) allCandidates.push(entry);
+
+            // 维护 Top 5
+            if (score > -Infinity) {
+              if (topK.length < 5) topK.push(entry);
+              else {
+                let minIdx = 0;
+                for (let i = 1; i < topK.length; i++) if (topK[i].score < topK[minIdx].score) minIdx = i;
+                if (score > topK[minIdx].score) topK[minIdx] = entry;
+              }
+            }
+
+            if (done % 16 === 0) {
+              onProgress?.(done, total);
+              await new Promise(r => setTimeout(r, 0));
+            }
+          }
+        }
+      }
+    }
+  }
+  /* ---------- Walk-Forward 验证：60/40 切分，对 Stage 1 Top 20 重新评估 ---------- */
+  // 行业内的"样本外验证"标准做法：用前 60% 做训练，后 40% 测试，挑表现稳定的
+  let wfoApplied = false;
+  let wfoChanged = false;
+  let stage1Best = best;
+  if (allCandidates.length > 0 && rows.length >= 30) {
+    const splitIdx = Math.floor(rows.length * 0.6);
+    const trainRows = rows.slice(0, splitIdx);
+    const testRows  = rows.slice(splitIdx);
+    if (trainRows.length >= 15 && testRows.length >= 10) {
+      wfoApplied = true;
+      allCandidates.sort((a,b) => b.score - a.score);
+      const top20 = allCandidates.slice(0, 20);
+
+      // 子周期的买入持有基准
+      const trainBh = (() => {
+        const sh = Math.floor(capital / trainRows[0].close / buyFactor / 100) * 100;
+        return (sh * trainRows[trainRows.length-1].close + (capital - sh * trainRows[0].close * buyFactor) - capital) / capital;
+      })();
+      const testBh = (() => {
+        const sh = Math.floor(capital / testRows[0].close / buyFactor / 100) * 100;
+        return (sh * testRows[testRows.length-1].close + (capital - sh * testRows[0].close * buyFactor) - capital) / capital;
+      })();
+
+      for (const cand of top20) {
+        const bp = cand.params;
+        const trainRes = gridBacktest(trainRows, {
+          capital, initialBuy: bp.initialBuy, perGridAmount: bp.perGridAmount, benchmark: null,
+          high: bp.high, low: bp.low, gridNum: bp.gridNum, geometric: bp.geometric, feeRate, slippage,
+        });
+        const testRes = gridBacktest(testRows, {
+          capital, initialBuy: bp.initialBuy, perGridAmount: bp.perGridAmount, benchmark: null,
+          high: bp.high, low: bp.low, gridNum: bp.gridNum, geometric: bp.geometric, feeRate, slippage,
+        });
+        const trainScore = computeScore(trainRes, trainBh, objective);
+        const testScore  = computeScore(testRes,  testBh,  objective);
+        // 鲁棒性评分：50% 全周期 + 50% 训练/测试最差值（惩罚过拟合）
+        cand.trainScore = trainScore;
+        cand.testScore = testScore;
+        cand.wfoScore = cand.score * 0.5 + Math.min(trainScore, testScore) * 0.5;
+      }
+      top20.sort((a,b) => b.wfoScore - a.wfoScore);
+      if (top20[0] && top20[0] !== best) {
+        wfoChanged = true;
+        best = top20[0];
+      }
+    }
+  }
+
+  /* ---------- 二阶段：对首仓位每 5% 一档细扫 (基于 WFO 优胜者) ---------- */
+  let stage2Count = 0;
+  let stage2Improved = false;
+  let stage1InitRatio = best?.params?.initRatio ?? null;
+  if (best) {
+    const fineRatios = [];
+    for (let r = 0; r <= 1.0001; r += 0.05) fineRatios.push(+r.toFixed(2));
+    for (const ir of fineRatios) {
+      // 跳过 Stage 1 已经测过的（容差 0.025）
+      if (initRatios.some(R => Math.abs(R - ir) < 0.025)) continue;
+      const initialBuy = capital * ir;
+      const perGridAmount = (capital - initialBuy) / Math.max(1, best.params.gridNum);
+      if (perGridAmount < 500 && ir < 0.95) continue;
+      const res = gridBacktest(rows, {
+        capital, initialBuy, perGridAmount, benchmark: null,
+        high: best.params.high, low: best.params.low,
+        gridNum: best.params.gridNum, geometric: best.params.geometric,
+        feeRate, slippage,
+      });
+      const score = computeScore(res, bhReturn, objective);
+      stage2Count++;
+      const entry = {
+        score,
+        params: { ...best.params, initialBuy, perGridAmount, initRatio: ir },
+        res,
+        stage: 2,
+      };
+      if (score > best.score) { best = entry; stage2Improved = true; }
+      // 也更新 Top 5
+      if (score > -Infinity) {
+        if (topK.length < 5) topK.push(entry);
+        else {
+          let minIdx = 0;
+          for (let i = 1; i < topK.length; i++) if (topK[i].score < topK[minIdx].score) minIdx = i;
+          if (score > topK[minIdx].score) topK[minIdx] = entry;
+        }
+      }
+    }
+  }
+
+  onProgress?.(total + stage2Count, total + stage2Count);
+  topK.sort((a,b) => b.score - a.score);
+  if (best) {
+    best.bhReturn = bhReturn;
+    best.topK = topK;
+    best.objective = objective;
+    // 蒙特卡洛：300 次重采样估计收益分布
+    best.monteCarlo = monteCarloCI(best.res.equity, 300);
+    best.context = {
+      pricePos, baseRatio, spread, atrPct, slopeMean,
+      searchedRatios: initRatios, totalCombos: total,
+      stage2Count, stage2Improved, stage1InitRatio,
+      wfoApplied, wfoChanged,
+      wfo: best.trainScore != null ? { trainScore: best.trainScore, testScore: best.testScore, wfoScore: best.wfoScore } : null,
+    };
+  }
+  return best;
+}
+
+let aiEqChart = null;
+function renderAiResult(best, rows, capital) {
+  const p = best.params;
+  const r = best.res;
+  const midPrice = (p.high + p.low) / 2;
+
+  // ETF 自适应上下文 + 优化目标 + 二阶段精修说明
+  const ctx = best.context;
+  if (ctx) {
+    const trendTxt = ctx.slopeMean > 0.001 ? '上行' : ctx.slopeMean < -0.001 ? '下行' : '震荡';
+    const trendColor = ctx.slopeMean > 0 ? '#16a34a' : ctx.slopeMean < 0 ? '#dc2626' : '#6b7280';
+    const objText = ({ return: '🚀 收益最大化', excess: '📈 超额收益优先', balanced: '⚖️ 收益风险平衡' })[best.objective] || best.objective;
+    const stage2Text = ctx.stage2Improved
+      ? `<strong style="color:#16a34a">✓ 精修生效</strong>：从 ${(ctx.stage1InitRatio*100).toFixed(0)}% → <strong style="color:#3b82f6">${(p.initRatio*100).toFixed(0)}%</strong>`
+      : `精修未改变最优值（保持 <strong style="color:#3b82f6">${(p.initRatio*100).toFixed(0)}%</strong>）`;
+
+    $('aiContext').innerHTML = `
+      📍 <strong>ETF 行情画像</strong>：当前价位于近期区间
+      <strong class="num">${(ctx.pricePos*100).toFixed(0)}%</strong> 分位 ·
+      日均波幅 <strong class="num">${(ctx.atrPct*100).toFixed(2)}%</strong> ·
+      趋势 <strong style="color:${trendColor}">${trendTxt}</strong> ·
+      优化目标 <strong>${objText}</strong>
+      <br/>
+      🎯 <strong>阶段 1 粗扫</strong>：评估 ${ctx.totalCombos} 种组合（含 ${ctx.searchedRatios.length} 个自适应仓位档 [${ctx.searchedRatios.map(r=>(r*100).toFixed(0)+'%').join(', ')}]）
+      <br/>
+      🔬 <strong>阶段 2 精修</strong>：对首仓位每 5% 一档加扫 ${ctx.stage2Count} 个新档位 · ${stage2Text}
+    `;
+  }
+
+  const stepPct = p.geometric
+    ? Math.pow(p.high/p.low, 1/p.gridNum) - 1
+    : ((p.high - p.low) / p.gridNum) / midPrice;
+  const stepFix = (p.high - p.low) / p.gridNum;
+  const stepText = p.geometric
+    ? (stepPct*100).toFixed(2) + ' %'
+    : (stepPct*100).toFixed(2) + ' % (≈' + stepFix.toFixed(3) + ' 元)';
+  const benchmarkSugg = midPrice.toFixed(3);
+
+  const items = [
+    ['总本金', capital.toLocaleString() + ' 元'],
+    ['首笔建仓金额', Math.round(p.initialBuy).toLocaleString() + ' 元'],
+    ['每格交易金额', Math.round(p.perGridAmount).toLocaleString() + ' 元'],
+    ['基准价（建议）', benchmarkSugg],
+    ['网格上限', p.high.toFixed(3)],
+    ['网格下限', p.low.toFixed(3)],
+    ['网格层数', p.gridNum + ' 层'],
+    ['网格模式', p.geometric ? '百分比浮动间距' : '固定间距'],
+    ['单格步长', stepText],
+    ['初始仓位占比', (p.initRatio*100).toFixed(0) + ' %'],
+  ];
+  $('aiParams').innerHTML = items.map(([k,v]) =>
+    `<div class="param-card"><div class="label">${k}</div><div class="value num">${v}</div></div>`
+  ).join('');
+
+  const setVal = (id, v, color) => { const el = $(id); el.textContent = v; if (color) el.style.color = color; };
+  const retColor = (v) => v >= 0 ? '#16a34a' : '#dc2626';
+  const excess = r.totalReturn - r.buyHoldReturn;
+  setVal('aiRet', fmtPct(r.totalReturn), retColor(r.totalReturn));
+  setVal('aiExcess', (excess >= 0 ? '+' : '') + fmtPct(excess), retColor(excess));
+  setVal('aiAnn', fmtPct(r.annReturn), retColor(r.annReturn));
+  setVal('aiSharpe', r.sharpe.toFixed(2), r.sharpe >= 1 ? '#16a34a' : r.sharpe >= 0 ? '#d97706' : '#dc2626');
+  setVal('aiSortino', r.sortino >= 99 ? '∞' : r.sortino.toFixed(2), r.sortino >= 1 ? '#16a34a' : r.sortino >= 0 ? '#d97706' : '#dc2626');
+  setVal('aiCalmar', r.calmar >= 99 ? '∞' : r.calmar.toFixed(2), r.calmar >= 1 ? '#16a34a' : r.calmar >= 0 ? '#d97706' : '#dc2626');
+  setVal('aiWinRate', fmtPct(r.winRate, 1), r.winRate >= 0.5 ? '#16a34a' : '#d97706');
+  setVal('aiWinDetail', `${r.profitableTrades || 0} 胜 / ${r.losingTrades || 0} 负`);
+  setVal('aiPF', r.profitFactor >= 99 ? '∞' : r.profitFactor.toFixed(2), r.profitFactor >= 1.5 ? '#16a34a' : r.profitFactor >= 1 ? '#d97706' : '#dc2626');
+  setVal('aiHold', fmtPct(r.buyHoldReturn), retColor(r.buyHoldReturn));
+  setVal('aiMDD', fmtPct(r.mdd), '#dc2626');
+  setVal('aiTradesCount', r.trades.length, '#7c3aed');
+
+  // 券商级鲁棒性面板：WFO + 蒙特卡洛
+  const robust = $('aiRobustness');
+  const mc = best.monteCarlo;
+  const wfo = best.context && best.context.wfo;
+  if (wfo || mc) {
+    let html = '<div class="font-bold text-sm text-indigo-900 mb-2">🔬 顶级回测验证（券商级鲁棒性检查）</div>';
+    html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+    if (wfo) {
+      const train = wfo.trainScore, test = wfo.testScore;
+      const consistency = Math.abs(train) > 0.001 ? 1 - Math.abs(train - test) / Math.max(Math.abs(train), Math.abs(test), 0.01) : 0;
+      const consColor = consistency > 0.7 ? '#16a34a' : consistency > 0.4 ? '#d97706' : '#dc2626';
+      html += `<div>
+        <div class="font-semibold mb-1">🚂 样本外验证 (Walk-Forward 60/40)</div>
+        <div>训练期评分 <strong class="num">${train.toFixed(3)}</strong> · 测试期评分 <strong class="num">${test.toFixed(3)}</strong></div>
+        <div class="mt-1">一致性 <strong class="num" style="color:${consColor}">${(consistency*100).toFixed(0)}%</strong>
+          ${best.context.wfoChanged ? '<span class="badge tag-good ml-1">已重排</span>' : ''}
+          ${consistency > 0.7 ? '· 参数稳定' : consistency > 0.4 ? '· 一般稳定' : '· 可能过拟合'}
+        </div>
+      </div>`;
+    }
+    if (mc) {
+      const profitColor = mc.profitProb >= 0.7 ? '#16a34a' : mc.profitProb >= 0.5 ? '#d97706' : '#dc2626';
+      html += `<div>
+        <div class="font-semibold mb-1">🎲 蒙特卡洛模拟（300 次日收益重采样）</div>
+        <div>预期收益分布：5% 分位 <strong style="color:#dc2626">${fmtPct(mc.p05)}</strong>
+          · 中位 <strong class="num">${fmtPct(mc.p50)}</strong>
+          · 95% 分位 <strong style="color:#16a34a">${fmtPct(mc.p95)}</strong></div>
+        <div class="mt-1">盈利概率 <strong style="color:${profitColor}">${fmtPct(mc.profitProb,1)}</strong>
+          · 95% 分位最大回撤 <strong style="color:#dc2626">${fmtPct(mc.ddP95)}</strong></div>
+      </div>`;
+    }
+    html += '</div>';
+    robust.innerHTML = html;
+    robust.classList.remove('hidden');
+  } else {
+    robust.classList.add('hidden');
+  }
+  // 最大 / 当前投入金额
+  setVal('aiMaxInv', fmtYuan(Math.max(0, r.maxInvested)), '#92400e');
+  setVal('aiMaxInvPct', '占总本金 ' + fmtPct(r.maxInvested / capital, 1));
+  setVal('aiCurInv', fmtYuan(r.finalInvested), r.finalInvested >= 0 ? '#92400e' : '#16a34a');
+  setVal('aiCurInvPct', (r.finalInvested >= 0 ? '占总本金 ' : '已超额回收 ') + fmtPct(Math.abs(r.finalInvested) / capital, 1));
+
+  // 历史同价周期回测
+  renderAnalogPeriods(best, capital);
+
+  // Top 5 备选配置表
+  if (best.topK && best.topK.length > 1) {
+    const trs = best.topK.map((e, i) => {
+      const pp = e.params, rr = e.res;
+      const ex = rr.totalReturn - rr.buyHoldReturn;
+      return `<tr class="${i===0?'bg-yellow-50 font-semibold':''}">
+        <td class="px-2 py-1">${i===0?'🏆':'#'+(i+1)}</td>
+        <td class="px-2 py-1 num">${fmtPct(rr.totalReturn)}</td>
+        <td class="px-2 py-1 num" style="color:${retColor(ex)}">${(ex>=0?'+':'')+fmtPct(ex)}</td>
+        <td class="px-2 py-1 num">${rr.sharpe.toFixed(2)}</td>
+        <td class="px-2 py-1 num" style="color:#dc2626">${fmtPct(rr.mdd)}</td>
+        <td class="px-2 py-1 num">${rr.trades.length}</td>
+        <td class="px-2 py-1 num">${pp.high.toFixed(3)} / ${pp.low.toFixed(3)}</td>
+        <td class="px-2 py-1 num">${pp.gridNum}</td>
+        <td class="px-2 py-1">${pp.geometric?'%间距':'固定'}</td>
+        <td class="px-2 py-1 num">${(pp.initRatio*100).toFixed(0)}%</td>
+      </tr>`;
+    }).join('');
+    $('aiTopK').innerHTML = `<table class="w-full text-xs">
+      <thead class="bg-white text-gray-600 border-b">
+        <tr>
+          <th class="px-2 py-1 text-left">排名</th>
+          <th class="px-2 py-1 text-left">累计收益</th>
+          <th class="px-2 py-1 text-left">超额收益</th>
+          <th class="px-2 py-1 text-left">夏普</th>
+          <th class="px-2 py-1 text-left">回撤</th>
+          <th class="px-2 py-1 text-left">交易数</th>
+          <th class="px-2 py-1 text-left">上/下沿</th>
+          <th class="px-2 py-1 text-left">网格数</th>
+          <th class="px-2 py-1 text-left">模式</th>
+          <th class="px-2 py-1 text-left">初始仓位</th>
+        </tr>
+      </thead>
+      <tbody>${trs}</tbody>
+    </table>`;
+  }
+
+  // 资金曲线：按天累计收益率 %
+  if (!aiEqChart) aiEqChart = echarts.init($('aiEquityChart'));
+  const dates = r.equity.map(e => e.date);
+  const gridRets = r.equity.map(e => (e.value - capital) / capital * 100);
+  const p0 = rows[0].close;
+  const bhSh = Math.floor(capital / p0 / 100) * 100;
+  const bhCashLeft = capital - bhSh * p0;
+  const bhRets = rows.map(rr => (bhSh * rr.close + bhCashLeft - capital) / capital * 100);
+  aiEqChart.setOption({
+    title: { text: '回测累计收益率走势', left: 'center', top: 4, textStyle: { fontSize: 13, fontWeight: 600 } },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', label: { backgroundColor: '#6b7280' } },
+      formatter: (params) => {
+        let html = `<div style="font-size:12px;line-height:1.6"><strong>${params[0].axisValue}</strong>`;
+        params.forEach(pp => {
+          const v = (+pp.value).toFixed(2);
+          const color = +pp.value >= 0 ? '#16a34a' : '#dc2626';
+          html += `<br/>${pp.marker}${pp.seriesName}: <strong style="color:${color}">${v}%</strong>`;
+        });
+        if (params.length >= 2) {
+          const diff = (+params[0].value) - (+params[1].value);
+          const color = diff >= 0 ? '#16a34a' : '#dc2626';
+          html += `<br/><span style="color:#6b7280">超额：</span><strong style="color:${color}">${(diff>=0?'+':'')+diff.toFixed(2)}%</strong>`;
+        }
+        return html + '</div>';
+      },
+    },
+    legend: { data: ['网格策略', '买入持有'], top: 30 },
+    grid: { left: 60, right: 30, top: 70, bottom: 50 },
+    xAxis: { type: 'category', data: dates, boundaryGap: false, axisLabel: { fontSize: 11 } },
+    yAxis: {
+      type: 'value', scale: true,
+      axisLabel: { formatter: (v) => v.toFixed(2) + '%', fontSize: 11 },
+      splitLine: { lineStyle: { color: '#f3f4f6' } },
+    },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', height: 18, bottom: 12 },
+    ],
+    series: [
+      { name: '网格策略', type: 'line', data: gridRets, showSymbol: false, smooth: false, lineStyle: { color: '#3b82f6', width: 2 }, areaStyle: { color: 'rgba(59,130,246,0.08)' } },
+      { name: '买入持有', type: 'line', data: bhRets,   showSymbol: false, smooth: false, lineStyle: { color: '#9ca3af', width: 2, type: 'dashed' } },
+    ],
+  }, true);
+  setTimeout(() => aiEqChart.resize(), 50);
+}
+
+async function onAiOptimize() {
+  if (!state.rows) return alert('请先加载 ETF 数据');
+  const period = +$('aiPeriod').value;
+  const capital = +$('aiCapital').value;
+  const feeRate = (+$('aiFee').value) / 10000;
+  const slippage = (+$('aiSlip').value) / 10000;
+  const objective = $('aiObjective').value;
+
+  if (state.rows.length < period) {
+    return alert(`数据不足：需要 ${period} 个交易日，当前仅有 ${state.rows.length} 个`);
+  }
+  if (capital <= 0) return alert('总本金需大于 0');
+
+  const aiRows = state.rows.slice(-period);
+  $('btnAiOptimize').disabled = true;
+  $('aiProgress').classList.remove('hidden');
+  $('aiResult').classList.add('hidden');
+  const objText = ({ return: '🚀 收益最大化', excess: '📈 超额收益优先', balanced: '⚖️ 平衡' })[objective];
+  $('aiStatus').innerHTML = `<span class="loader"></span> ${objText} · 粗扫 → WFO → 精修 → MC...`;
+
+  try {
+    const best = await aiOptimize(aiRows, {
+      capital, feeRate, slippage, objective,
+      onProgress: (done, total) => {
+        $('aiBar').style.width = (done/total*100) + '%';
+        $('aiProgressText').textContent = `已测试 ${done}/${total} 种参数组合`;
+      }
+    });
+    if (!best || best.score === -Infinity) {
+      throw new Error('该周期内无可行参数（数据波动太小或交易次数过少）');
+    }
+    state.aiBest = best;
+    state.aiRows = aiRows;
+    $('aiResult').classList.remove('hidden');     // 先 show，避免图表在 display:none 容器里 init 时拿到 0 宽
+    renderAiResult(best, aiRows, capital);
+    $('aiStatus').innerHTML = '<span class="text-green-600">✓ 寻优完成</span>';
+  } catch (e) {
+    $('aiStatus').innerHTML = `<span class="text-red-600">✗ ${e.message}</span>`;
+    console.error(e);
+  } finally {
+    $('btnAiOptimize').disabled = false;
+    $('aiProgress').classList.add('hidden');
+  }
+}
+
+function renderAnalogPeriods(best, capital) {
+  const feeRate = (+$('aiFee').value) / 10000;
+  const slippage = (+$('aiSlip').value) / 10000;
+  const period = +$('aiPeriod').value;
+  const currentPrice = state.rows[state.rows.length - 1].close;
+  const analogs = findAnalogPeriods(state.rows, period, currentPrice, 0.10, 5);
+
+  if (!analogs.length) {
+    $('aiAnalogContent').innerHTML = `<p class="text-sm text-gray-500">当前价位 <strong class="num">${currentPrice.toFixed(3)}</strong> 历史上未出现过类似价位（可能是历史新高/新低），无可用同价周期。</p>`;
+    return;
+  }
+
+  // 将最优参数应用到每个同价周期
+  const evalResults = analogs.map(a => {
+    const res = gridBacktest(a.rows, {
+      capital,
+      initialBuy: best.params.initialBuy,
+      perGridAmount: best.params.perGridAmount,
+      benchmark: null,
+      high: best.params.high,
+      low: best.params.low,
+      gridNum: best.params.gridNum,
+      geometric: best.params.geometric,
+      feeRate, slippage,
+    });
+    return { ...a, res };
+  });
+
+  const retColor = (v) => v >= 0 ? '#16a34a' : '#dc2626';
+  const trs = evalResults.map(e => {
+    const ex = e.res.totalReturn - e.res.buyHoldReturn;
+    return `<tr class="border-b hover:bg-white">
+      <td class="px-2 py-1 num">${e.startDate} ~ ${e.endDate}</td>
+      <td class="px-2 py-1 num">${e.startPrice.toFixed(3)}</td>
+      <td class="px-2 py-1 text-right num" style="color:${retColor(e.res.totalReturn)}">${fmtPct(e.res.totalReturn)}</td>
+      <td class="px-2 py-1 text-right num" style="color:${retColor(ex)}">${(ex>=0?'+':'')+fmtPct(ex)}</td>
+      <td class="px-2 py-1 text-right num">${e.res.sharpe.toFixed(2)}</td>
+      <td class="px-2 py-1 text-right num" style="color:#dc2626">${fmtPct(e.res.mdd)}</td>
+      <td class="px-2 py-1 text-right num">${e.res.trades.length}</td>
+      <td class="px-2 py-1 text-right num">${fmtYuan(Math.max(0, e.res.maxInvested))}</td>
+    </tr>`;
+  }).join('');
+
+  // 同价周期 + 当前周期的统计汇总
+  const allRes = [best.res, ...evalResults.map(e => e.res)];
+  const avgRet = allRes.reduce((s,r) => s + r.totalReturn, 0) / allRes.length;
+  const avgExcess = allRes.reduce((s,r) => s + (r.totalReturn - r.buyHoldReturn), 0) / allRes.length;
+  const winRate = allRes.filter(r => r.totalReturn > r.buyHoldReturn).length / allRes.length;
+
+  $('aiAnalogContent').innerHTML = `
+    <p class="text-xs text-gray-600 mb-2">
+      当前价 <strong class="num">${currentPrice.toFixed(3)}</strong>，扫描历史中起始价在
+      <strong class="num">${(currentPrice*0.9).toFixed(3)} ~ ${(currentPrice*1.1).toFixed(3)}</strong>
+      的同等长度（${period} 日）周期，应用上述最优配置：
+    </p>
+    <div class="overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead class="bg-white text-gray-600 border-b">
+        <tr>
+          <th class="px-2 py-1 text-left">同价周期</th>
+          <th class="px-2 py-1 text-left">起始价</th>
+          <th class="px-2 py-1 text-right">累计收益</th>
+          <th class="px-2 py-1 text-right">超额收益</th>
+          <th class="px-2 py-1 text-right">夏普</th>
+          <th class="px-2 py-1 text-right">最大回撤</th>
+          <th class="px-2 py-1 text-right">交易数</th>
+          <th class="px-2 py-1 text-right">最大投入</th>
+        </tr>
+      </thead>
+      <tbody>${trs}</tbody>
+    </table>
+    </div>
+    <div class="mt-2 text-xs text-gray-700 bg-white rounded p-2 border">
+      <strong>稳定性诊断（含当前周期共 ${allRes.length} 个）：</strong>
+      平均累计收益 <span class="num" style="color:${retColor(avgRet)}">${fmtPct(avgRet)}</span> ·
+      平均超额收益 <span class="num" style="color:${retColor(avgExcess)}">${(avgExcess>=0?'+':'')+fmtPct(avgExcess)}</span> ·
+      跑赢买入持有的周期占比 <strong class="num">${fmtPct(winRate, 0)}</strong>
+    </div>`;
+}
+
+function copyAiParams() {
+  if (!state.aiBest) return;
+  const p = state.aiBest.params;
+  const r = state.aiBest.res;
+  const capital = +$('aiCapital').value;
+  const period = +$('aiPeriod').value;
+  const periodTxt = ({20:'1个月', 60:'3个月', 120:'6个月', 250:'1年'})[period] || period+'日';
+  const midPrice = (p.high + p.low) / 2;
+  const stepPctVal = p.geometric
+    ? Math.pow(p.high/p.low, 1/p.gridNum) - 1
+    : ((p.high - p.low) / p.gridNum) / midPrice;
+  const stepText = p.geometric
+    ? (stepPctVal*100).toFixed(2) + ' %'
+    : (stepPctVal*100).toFixed(2) + ' % (≈' + ((p.high - p.low) / p.gridNum).toFixed(3) + ' 元)';
+
+  const text = `【ETF 网格交易配置 - AI 寻优结果】
+========================================
+标的：${state.meta.code} ${state.meta.name && state.meta.name !== state.meta.code ? state.meta.name : ''}
+回测周期：过去${periodTxt}（${state.aiRows.length} 个交易日）
+----------------------------------------
+总本金：${capital.toLocaleString()} 元
+首笔建仓金额：${Math.round(p.initialBuy).toLocaleString()} 元
+每格交易金额：${Math.round(p.perGridAmount).toLocaleString()} 元
+基准价（建议）：${((p.high+p.low)/2).toFixed(3)}
+网格上限：${p.high.toFixed(3)}
+网格下限：${p.low.toFixed(3)}
+网格层数：${p.gridNum} 层
+网格模式：${p.geometric ? '百分比浮动间距' : '固定间距'}
+单格步长：${stepText}
+----------------------------------------
+回测绩效：
+累计收益：${fmtPct(r.totalReturn)}
+年化收益：${fmtPct(r.annReturn)}
+夏普比率：${r.sharpe.toFixed(2)} · 索提诺：${r.sortino >= 99 ? '∞' : r.sortino.toFixed(2)} · 卡玛：${r.calmar >= 99 ? '∞' : r.calmar.toFixed(2)}
+胜率：${fmtPct(r.winRate, 1)}（${r.profitableTrades || 0} 胜/${r.losingTrades || 0} 负） · 盈亏比：${r.profitFactor >= 99 ? '∞' : r.profitFactor.toFixed(2)}
+最大回撤：${fmtPct(r.mdd)}
+交易次数：${r.trades.length}
+买入持有：${fmtPct(r.buyHoldReturn)}
+----------------------------------------
+鲁棒性验证：
+${state.aiBest.context.wfo ? `Walk-Forward：训练 ${state.aiBest.context.wfo.trainScore.toFixed(3)} / 测试 ${state.aiBest.context.wfo.testScore.toFixed(3)}` : 'Walk-Forward：N/A'}
+${state.aiBest.monteCarlo ? `蒙特卡洛盈利概率：${fmtPct(state.aiBest.monteCarlo.profitProb, 1)} · 收益中位：${fmtPct(state.aiBest.monteCarlo.p50)} · 95% 分位回撤：${fmtPct(state.aiBest.monteCarlo.ddP95)}` : ''}
+========================================
+仅供研究参考，不构成投资建议`;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = $('btnCopyParams');
+    const original = btn.textContent;
+    btn.textContent = '✓ 已复制到剪贴板';
+    setTimeout(() => btn.textContent = original, 2000);
+  }).catch(() => alert('复制失败，请手动选择'));
+}
+
+function applyAiToManual() {
+  if (!state.aiBest) return;
+  const p = state.aiBest.params;
+  const capital = +$('aiCapital').value;
+  $('capital').value = capital;
+  $('initialBuy').value = Math.round(p.initialBuy);
+  $('perGridAmt').value = Math.round(p.perGridAmount);
+  $('benchmark').value = ((p.high+p.low)/2).toFixed(3);
+  $('gridHigh').value = p.high.toFixed(3);
+  $('gridLow').value = p.low.toFixed(3);
+  $('gridNum').value = p.gridNum;
+  $('gridType').value = p.geometric ? 'geo' : 'arith';
+  $('feeRate').value = $('aiFee').value;
+  $('slippage').value = $('aiSlip').value;
+  switchMode('manual');
+  $('btnBacktest').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function switchMode(mode) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('[data-mode-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.modePane !== mode));
+  setTimeout(() => { kChart && kChart.resize(); eqChart && eqChart.resize(); aiEqChart && aiEqChart.resize(); }, 0);
+}
+
+$('btnLoad').addEventListener('click', () => onLoad());
+$('btnBacktest').addEventListener('click', onBacktest);
+$('btnAutoFill').addEventListener('click', () => state.recommend && fillRecommend(state.recommend));
+$('winSize').addEventListener('change', recomputeScore);
+$('btnAiOptimize').addEventListener('click', onAiOptimize);
+$('btnCopyParams').addEventListener('click', copyAiParams);
+$('btnApplyToManual').addEventListener('click', applyAiToManual);
+document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode)));
+window.addEventListener('resize', () => { kChart && kChart.resize(); eqChart && eqChart.resize(); aiEqChart && aiEqChart.resize(); });
+
+initDates();
+
+// 支持 URL 参数 ?code=XXXXXX&name=XXX&win=NNN 自动加载
+{
+  const params = new URLSearchParams(location.search);
+  const urlCode = params.get('code');
+  const urlName = params.get('name');
+  const urlWin = params.get('win');
+  if (urlWin && /^\d+$/.test(urlWin)) {
+    const sel = $('winSize');
+    if (![...sel.options].some(o => o.value === urlWin)) {
+      const opt = document.createElement('option');
+      opt.value = urlWin;
+      opt.textContent = urlWin + '日';
+      sel.appendChild(opt);
+    }
+    sel.value = urlWin;
+  }
+  if (urlCode && /^\d{6}$/.test(urlCode)) {
+    $('etfCode').value = urlCode;
+    onLoad(urlName || undefined);
+  }
+}
+</script>
+</body>
+</html>
