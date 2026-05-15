@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>🤖 AI ETF 盯盘助手 - BB + RSI6 信号</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+  .tag-buy { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .tag-sell{ background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  .tag-good{ background: #dcfce7; color: #166534; }
+  .tag-warn{ background: #fef3c7; color: #92400e; }
+  .tag-bad { background: #fee2e2; color: #991b1b; }
+  .num { font-variant-numeric: tabular-nums; }
+  input, select, button { font-family: inherit; }
+  input[type="text"], input[type="number"], select {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 14px; background: #fff;
+  }
+  input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.2); }
+  button.primary { background: #3b82f6; color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { background: #2563eb; }
+  button.primary:disabled { background: #9ca3af; cursor: not-allowed; }
+  button.ghost { background: #fff; color: #374151; border: 1px solid #d1d5db; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+  button.ghost:hover { background: #f9fafb; }
+  button.danger { background: #fff; color: #dc2626; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+  button.danger:hover { background: #fef2f2; }
+  .loader { border: 3px solid #e5e7eb; border-top: 3px solid #3b82f6; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  @keyframes pulse-buy { 0%,100% { background-color: rgba(34,197,94,0.10); } 50% { background-color: rgba(34,197,94,0.25); } }
+  @keyframes pulse-sell { 0%,100% { background-color: rgba(239,68,68,0.10); } 50% { background-color: rgba(239,68,68,0.25); } }
+  .row-buy { animation: pulse-buy 2.5s ease-in-out infinite; }
+  .row-sell { animation: pulse-sell 2.5s ease-in-out infinite; }
+  .switch { position: relative; display: inline-block; width: 38px; height: 22px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; transition: .2s; border-radius: 22px; }
+  .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; transition: .2s; border-radius: 50%; }
+  .switch input:checked + .slider { background: #3b82f6; }
+  .switch input:checked + .slider:before { transform: translateX(16px); }
+  .row-action { padding: 2px 6px; font-size: 12px; border-radius: 4px; cursor: pointer; border: 1px solid; background: #fff; margin: 0 2px; transition: all .15s; }
+  .row-action:hover { transform: scale(1.08); }
+  .row-action.add { border-color: #86efac; color: #166534; }
+  .row-action.add:hover { background: #dcfce7; }
+  .row-action.chart { border-color: #93c5fd; color: #1e40af; }
+  .row-action.chart:hover { background: #dbeafe; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; display: none; align-items: flex-start; justify-content: center; padding: 16px; overflow-y: auto; }
+  .modal-overlay.show { display: flex; }
+  .modal-box { background: #fff; border-radius: 10px; width: 95%; max-width: 1400px; display: flex; flex-direction: column; margin: auto; }
+  .toggle-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; font-size: 12px; border-radius: 12px; cursor: pointer; background: #f3f4f6; color: #6b7280; user-select: none; border: 1px solid transparent; }
+  .toggle-pill:hover { background: #e5e7eb; }
+  .toggle-pill input { display: none; }
+  .toggle-pill.on { background: #dbeafe; color: #1e40af; font-weight: 600; border-color: #93c5fd; }
+  .period-tab { padding: 6px 14px; font-size: 13px; color: #6b7280; border-radius: 6px; cursor: pointer; background: transparent; border: none; font-weight: 500; }
+  .period-tab:hover { background: #f3f4f6; color: #374151; }
+  .period-tab.active { color: #111827; font-weight: 700; border-bottom: 2px solid #3b82f6; border-radius: 0; }
+  .info-cell { display: flex; gap: 4px; align-items: baseline; }
+  .info-cell .lbl { color: #9ca3af; font-size: 12px; }
+  .info-cell .val { font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .price-up { color: #ef4444; }
+  .price-down { color: #10b981; }
+  .gauge { display: inline-block; width: 70px; height: 6px; background: linear-gradient(to right, #ef4444 0%, #ef4444 20%, #fbbf24 20%, #fbbf24 80%, #22c55e 80%, #22c55e 100%); border-radius: 3px; position: relative; vertical-align: middle; margin-left: 4px; }
+  .gauge .pin { position: absolute; top: -2px; width: 2px; height: 10px; background: #111827; border-radius: 1px; }
+  .bb-bar { display: inline-block; width: 70px; height: 6px; background: #e5e7eb; border-radius: 3px; position: relative; vertical-align: middle; margin-left: 4px; }
+  .bb-bar .pin { position: absolute; top: -2px; width: 2px; height: 10px; background: #3b82f6; border-radius: 1px; }
+  table th { font-weight: 600; }
+</style>
+</head>
+<body class="bg-gray-50">
+<div class="max-w-[1700px] mx-auto p-4 space-y-4">
+
+  <header class="flex items-baseline justify-between flex-wrap gap-2">
+    <h1 class="text-2xl font-bold text-gray-800">🤖 AI ETF 盯盘助手</h1>
+    <div class="flex items-center gap-4 text-sm">
+      <a href="etf-ranking.html" class="text-blue-600 hover:underline">📊 适用性排行 →</a>
+      <a href="etf-grid.html" class="text-blue-600 hover:underline">🔍 单只分析 →</a>
+      <span class="text-xs text-gray-500">BB(20,2σ) + RSI(6) 双指标 · 新浪/腾讯行情</span>
+    </div>
+  </header>
+
+  <!-- 监控控制台 -->
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex flex-wrap items-center gap-4">
+      <div class="flex items-center gap-2">
+        <button id="btnToggle" class="primary">▶ 启动监控</button>
+        <button id="btnRefreshNow" class="ghost">🔄 立即扫描</button>
+      </div>
+      <div class="text-sm">
+        <label class="mr-1">扫描间隔</label>
+        <select id="interval">
+          <option value="60">1 分钟</option>
+          <option value="180" selected>3 分钟</option>
+          <option value="300">5 分钟</option>
+          <option value="600">10 分钟</option>
+          <option value="1800">30 分钟</option>
+        </select>
+      </div>
+      <div class="text-sm">
+        <label class="mr-1">全市场扫描流动性</label>
+        <select id="liqFilter">
+          <option value="0">关闭</option>
+          <option value="100000000">日成交 &gt; 1亿</option>
+          <option value="50000000" selected>日成交 &gt; 5000万</option>
+          <option value="10000000">日成交 &gt; 1000万</option>
+        </select>
+      </div>
+      <label class="text-sm flex items-center gap-2">
+        浏览器通知
+        <span class="switch"><input type="checkbox" id="optNotify" checked /><span class="slider"></span></span>
+      </label>
+      <label class="text-sm flex items-center gap-2">
+        声音提醒
+        <span class="switch"><input type="checkbox" id="optSound" checked /><span class="slider"></span></span>
+      </label>
+      <label class="text-sm flex items-center gap-2">
+        非交易时段也扫
+        <span class="switch"><input type="checkbox" id="optOffHours" /><span class="slider"></span></span>
+      </label>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-1 mt-3 text-sm">
+      <span>状态：<strong id="statusText" class="text-gray-500">未启动</strong></span>
+      <span>当前 A 股交易时段：<strong id="tradingHours">检查中...</strong></span>
+      <span>上次扫描：<strong id="lastScan">-</strong></span>
+      <span>下次扫描：<strong id="nextScan">-</strong></span>
+      <span>累计扫描：<strong id="scanCount" class="num">0</strong></span>
+      <span>累计买入信号：<strong id="buyCount" class="text-green-600 num">0</strong></span>
+      <span>累计卖出信号：<strong id="sellCount" class="text-red-600 num">0</strong></span>
+    </div>
+  </section>
+
+  <!-- 持仓 / 自选监控 -->
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+      <h2 class="text-lg font-bold text-gray-800">📌 持仓 / 自选监控</h2>
+      <div class="flex items-center gap-2">
+        <input id="addCode" type="text" placeholder="输入 ETF 代码 如 510300" class="w-44" maxlength="6" />
+        <button id="btnAdd" class="primary">添加</button>
+        <button id="btnClearWatch" class="danger" title="清空持仓列表">清空</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="px-3 py-2 text-left">代码</th>
+            <th class="px-3 py-2 text-left">名称</th>
+            <th class="px-3 py-2 text-right">现价</th>
+            <th class="px-3 py-2 text-right">涨跌</th>
+            <th class="px-3 py-2 text-left">布林位置</th>
+            <th class="px-3 py-2 text-left">RSI6</th>
+            <th class="px-3 py-2 text-left">信号</th>
+            <th class="px-3 py-2 text-left">触发时间</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="watchBody">
+          <tr><td colspan="9" class="text-center py-6 text-gray-500">还没有添加持仓 ETF，上方输入框输入 6 位代码后点"添加"</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 今日操作指南 -->
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">🎯 今日操作指南</h2>
+        <p class="text-xs text-gray-500 mt-0.5">结合实时信号 · 技术面 · 市场情绪，给出今日具体操作建议</p>
+      </div>
+      <button id="btnRefreshGuide" class="primary text-sm">🔄 重新分析</button>
+    </div>
+    <div id="guideContent" class="space-y-3">
+      <div class="text-sm text-gray-500 text-center py-6">📋 点击上方"立即扫描"或"启动监控"后，自动生成今日操作建议</div>
+    </div>
+  </section>
+
+  <!-- 全市场触发列表 -->
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+      <h2 class="text-lg font-bold text-gray-800">🌐 全市场信号扫描</h2>
+      <div id="marketStatus" class="text-sm text-gray-600"></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <h3 class="font-semibold text-green-700 mb-2">🟢 买入信号 (跌破 BB 下轨 + RSI6 &lt; 20)</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-green-50 text-green-900">
+              <tr>
+                <th class="px-2 py-1 text-left">代码</th>
+                <th class="px-2 py-1 text-left">名称</th>
+                <th class="px-2 py-1 text-right">现价</th>
+                <th class="px-2 py-1 text-right" title="布林上轨 (MA20 + 2σ)">BB 上轨</th>
+                <th class="px-2 py-1 text-right" title="布林中轨 (MA20)">BB 中轨</th>
+                <th class="px-2 py-1 text-right" title="布林下轨 (MA20 - 2σ)">BB 下轨</th>
+                <th class="px-2 py-1 text-right">RSI6</th>
+                <th class="px-2 py-1 text-right">强度</th>
+                <th class="px-2 py-1 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="buyList"><tr><td colspan="9" class="text-center py-3 text-gray-400">暂无</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-semibold text-red-700 mb-2">🔴 卖出信号 (突破 BB 上轨 + RSI6 &gt; 80)</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-red-50 text-red-900">
+              <tr>
+                <th class="px-2 py-1 text-left">代码</th>
+                <th class="px-2 py-1 text-left">名称</th>
+                <th class="px-2 py-1 text-right">现价</th>
+                <th class="px-2 py-1 text-right" title="布林上轨 (MA20 + 2σ)">BB 上轨</th>
+                <th class="px-2 py-1 text-right" title="布林中轨 (MA20)">BB 中轨</th>
+                <th class="px-2 py-1 text-right" title="布林下轨 (MA20 - 2σ)">BB 下轨</th>
+                <th class="px-2 py-1 text-right">RSI6</th>
+                <th class="px-2 py-1 text-right">强度</th>
+                <th class="px-2 py-1 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="sellList"><tr><td colspan="9" class="text-center py-3 text-gray-400">暂无</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 信号历史 -->
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-bold text-gray-800">📜 信号历史</h2>
+      <button id="btnClearHistory" class="danger">清空历史</button>
+    </div>
+    <div class="overflow-x-auto max-h-72 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600 sticky top-0">
+          <tr>
+            <th class="px-3 py-2 text-left">时间</th>
+            <th class="px-3 py-2 text-left">代码</th>
+            <th class="px-3 py-2 text-left">名称</th>
+            <th class="px-3 py-2 text-left">信号</th>
+            <th class="px-3 py-2 text-right">触发价</th>
+            <th class="px-3 py-2 text-right">RSI6</th>
+            <th class="px-3 py-2 text-left">来源</th>
+            <th class="px-3 py-2 text-center">操作</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"><tr><td colspan="8" class="text-center py-3 text-gray-400">暂无信号</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<!-- 走势图模态框 -->
+<div id="chartModal" class="modal-overlay">
+  <div class="modal-box">
+    <!-- 顶栏：标题 + 关闭 -->
+    <div class="flex items-center justify-between px-5 pt-3 pb-2">
+      <div class="flex items-baseline gap-2">
+        <span id="chartName" class="text-xl font-bold text-gray-900">食品饮料ETF华夏</span>
+        <span id="chartMeta" class="text-xs text-gray-500"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="chartAddBtn" class="ghost text-sm">➕ 加自选</button>
+        <button id="chartClose" class="danger text-sm">✕ 关闭</button>
+      </div>
+    </div>
+    <!-- 价格 + 涨跌幅 -->
+    <div class="flex items-end gap-4 px-5 pb-2">
+      <div class="flex items-baseline gap-2">
+        <span id="chartPrice" class="text-4xl font-bold num">0.000</span>
+        <span id="chartChange" class="text-sm num"></span>
+        <span id="chartChangePct" class="text-sm num"></span>
+      </div>
+    </div>
+    <!-- 行情信息条 (高低开昨 量额) -->
+    <div id="chartInfo" class="grid grid-cols-3 md:grid-cols-6 gap-x-6 gap-y-1 px-5 pb-3 border-b"></div>
+    <!-- 周期标签 + 叠加指标开关 -->
+    <div class="px-5 py-2 border-b flex items-center gap-2 flex-wrap">
+      <button class="period-tab active" data-period="day">日K</button>
+      <button class="period-tab" data-period="week">周K</button>
+      <button class="period-tab" data-period="month">月K</button>
+      <span class="text-gray-300 mx-1">|</span>
+      <span class="text-xs text-gray-500">回看</span>
+      <select id="chartPeriod" class="text-sm">
+        <option value="60">60</option>
+        <option value="120" selected>120</option>
+        <option value="250">250</option>
+        <option value="500">500</option>
+      </select>
+      <span class="text-gray-300 mx-1">|</span>
+      <span class="text-xs text-gray-500">主图叠加</span>
+      <label class="toggle-pill on"><input type="checkbox" id="tgBOLL" checked />BOLL(20,2)</label>
+      <label class="toggle-pill"><input type="checkbox" id="tgMA5" />MA5</label>
+      <label class="toggle-pill"><input type="checkbox" id="tgMA10" />MA10</label>
+      <label class="toggle-pill"><input type="checkbox" id="tgMA20" />MA20</label>
+      <label class="toggle-pill"><input type="checkbox" id="tgMA60" />MA60</label>
+    </div>
+    <!-- 图表（固定高度，超出由模态层滚动） -->
+    <div id="chartContainer" style="width:100%;height:760px;flex-shrink:0;"></div>
+  </div>
+</div>
+
+<!-- 浮动 Toast 提示容器 -->
+<div id="toastBox" style="position:fixed;top:16px;right:16px;z-index:1100;display:flex;flex-direction:column;gap:8px;"></div>
+
+<script>
+/* ============================================================
+   1. 通用工具 + 行情接口（同 ranking 页）
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d=2) => (v == null || isNaN(v)) ? '-' : (+v).toFixed(d);
+const fmtPct = (v, d=2) => (v == null || isNaN(v)) ? '-' : ((v*100).toFixed(d) + '%');
+const fmtAmount = (v) => v == null || isNaN(v) ? '-' : v >= 1e8 ? (v/1e8).toFixed(2)+'亿' : v >= 1e4 ? (v/1e4).toFixed(0)+'万' : v.toFixed(0);
+const nowTime = () => new Date().toLocaleTimeString('zh-CN', { hour12: false });
+const nowFull = () => new Date().toLocaleString('zh-CN', { hour12: false });
+
+function jsonpFlex(buildUrl, timeoutMs = 12000) {
+  return new Promise((resolve, reject) => {
+    const cb = 'jsonp_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { reject(new Error('请求超时')); cleanup(); }}, timeoutMs);
+    window[cb] = (data) => { done = true; clearTimeout(timer); resolve(data); cleanup(); };
+    script.onerror = () => { if (!done) { clearTimeout(timer); reject(new Error('脚本加载失败')); cleanup(); }};
+    function cleanup() { try { delete window[cb]; } catch {} if (script.parentNode) script.remove(); }
+    script.src = buildUrl(cb);
+    document.body.appendChild(script);
+  });
+}
+
+function symbolOf(code) {
+  code = String(code).trim();
+  if (!/^\d{6}$/.test(code)) throw new Error('代码必须为 6 位数字');
+  const f = code[0];
+  return ((f === '5' || f === '6') ? 'sh' : 'sz') + code;
+}
+
+async function fetchKline(code, days = 60, period = 'day') {
+  const sym = symbolOf(code);
+  const data = await jsonpFlex(cb =>
+    `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${sym},${period},,,${days},qfq&_callback=${cb}`,
+    10000
+  );
+  if (!data || data.code !== 0) throw new Error('Tencent 接口错误');
+  const obj = data.data?.[sym];
+  if (!obj) throw new Error('数据为空');
+  const klines = obj['qfq' + period] || obj[period] || obj.qfqday || obj.day || [];
+  if (!klines.length) throw new Error('K 线为空');
+  let prev = null;
+  const rows = klines.map(k => {
+    const open=+k[1], close=+k[2], high=+k[3], low=+k[4];
+    const r = { date:k[0], open, close, high, low, vol:+k[5],
+                chgPct: prev ? 100*(close-prev)/prev : 0 };
+    prev = close;
+    return r;
+  });
+  return { code, rows };
+}
+
+async function fetchAllETFs() {
+  const all = [];
+  for (let p = 1; p <= 25; p++) {
+    let data;
+    try {
+      data = await jsonpFlex(cb =>
+        `https://vip.stock.finance.sina.com.cn/quotes_service/api/jsonp_v2.php/${cb}/Market_Center.getHQNodeData?page=${p}&num=100&sort=symbol&asc=1&node=etf_hq_fund`
+      );
+    } catch { break; }
+    if (!Array.isArray(data) || !data.length) break;
+    all.push(...data);
+    if (data.length < 100) break;
+  }
+  return all.map(e => ({
+    code: String(e.code), name: e.name, price: +e.trade, amount: +e.amount, chgPct: +e.changepercent,
+  })).filter(e => /^\d{6}$/.test(e.code) && !isNaN(e.price));
+}
+
+// 单只 ETF 名称查询（用于持仓加入时显示）
+const nameCache = {};
+async function fetchETFName(code) {
+  if (nameCache[code]) return nameCache[code];
+  try {
+    const { rows } = await fetchKline(code, 5);
+    if (rows && rows.length) {
+      // Tencent kline 不含名称；从 Sina 列表里 lookup（懒加载）
+      if (Object.keys(nameCache).length === 0 && state.etfList) {
+        state.etfList.forEach(e => nameCache[e.code] = e.name);
+      }
+    }
+  } catch {}
+  return nameCache[code] || code;
+}
+
+/* ============================================================
+   2. 指标计算
+   ============================================================ */
+function computeBB(closes, n = 20, k = 2) {
+  if (closes.length < n) return null;
+  const win = closes.slice(-n);
+  const mean = win.reduce((a,b)=>a+b,0) / n;
+  const variance = win.reduce((s,p) => s + (p-mean)**2, 0) / n;
+  const std = Math.sqrt(variance);
+  return { mid: mean, upper: mean + k*std, lower: mean - k*std, width: 2*k*std };
+}
+
+// 经典 RSI (Wilder smoothing)
+function computeRSI(closes, period = 6) {
+  if (closes.length < period + 1) return NaN;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d > 0) gains += d; else losses -= d;
+  }
+  let avgG = gains / period, avgL = losses / period;
+  let rsi = avgL === 0 ? 100 : 100 - 100 / (1 + avgG/avgL);
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+    avgG = (avgG * (period - 1) + g) / period;
+    avgL = (avgL * (period - 1) + l) / period;
+    rsi = avgL === 0 ? 100 : 100 - 100 / (1 + avgG/avgL);
+  }
+  return rsi;
+}
+
+// 综合分析：返回 BB + RSI + 信号 + 强度
+function analyzeRows(rows) {
+  if (!rows || rows.length < 25) return null;
+  const closes = rows.map(r => r.close);
+  const bb = computeBB(closes, 20, 2);
+  const rsi6 = computeRSI(closes, 6);
+  if (!bb || isNaN(rsi6)) return null;
+  const cur = closes[closes.length-1];
+  const prev = closes[closes.length-2];
+  const bbPos = bb.width > 0 ? (cur - bb.lower) / bb.width : 0.5;
+  let signal = null, strength = 0;
+  if (cur < bb.lower && rsi6 < 20) {
+    signal = 'BUY';
+    const bbDist = (bb.lower - cur) / Math.max(bb.width, 1e-9);  // 偏离 BB 下轨多少 (按 BB 宽度归一)
+    const rsiDist = (20 - rsi6) / 20;
+    strength = +(bbDist * 50 + rsiDist * 50).toFixed(2);
+  } else if (cur > bb.upper && rsi6 > 80) {
+    signal = 'SELL';
+    const bbDist = (cur - bb.upper) / Math.max(bb.width, 1e-9);
+    const rsiDist = (rsi6 - 80) / 20;
+    strength = +(bbDist * 50 + rsiDist * 50).toFixed(2);
+  }
+  return {
+    price: cur, chgPct: prev ? (cur - prev) / prev * 100 : 0,
+    bbMid: bb.mid, bbUpper: bb.upper, bbLower: bb.lower, bbPos, bbWidth: bb.width,
+    rsi6, signal, strength,
+    date: rows[rows.length-1].date,
+  };
+}
+
+/* ============================================================
+   3. 通知 + 声音
+   ============================================================ */
+async function ensureNotificationPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const perm = await Notification.requestPermission();
+  return perm === 'granted';
+}
+
+function playBeep(kind = 'buy') {
+  if (!$('optSound').checked) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    const freq = kind === 'buy' ? [880, 1100, 1320] : [1320, 1100, 880];
+    freq.forEach((f, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.25, now + i*0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.15 + 0.13);
+      osc.start(now + i*0.15);
+      osc.stop(now + i*0.15 + 0.13);
+    });
+  } catch (e) { console.warn('beep failed', e); }
+}
+
+function showToast(title, body, signal) {
+  const box = $('toastBox');
+  const div = document.createElement('div');
+  const color = signal === 'BUY' ? 'background:#dcfce7;border-color:#86efac;color:#166534'
+                                 : 'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
+  div.style.cssText = `min-width:260px;max-width:340px;padding:10px 14px;border-radius:8px;border:1px solid;${color};box-shadow:0 4px 12px rgba(0,0,0,.1);font-size:13px;line-height:1.5;cursor:pointer;`;
+  div.innerHTML = `<strong>${title}</strong><br/>${body}<div style="font-size:11px;opacity:.7;margin-top:2px;">点击关闭</div>`;
+  div.onclick = () => div.remove();
+  box.appendChild(div);
+  setTimeout(() => div.remove(), 10000);
+}
+
+async function notifySignal(etf, info) {
+  const title = info.signal === 'BUY' ? `🟢 买入信号：${etf.name || etf.code}` : `🔴 卖出信号：${etf.name || etf.code}`;
+  const body = `${etf.code} 现价 ${info.price.toFixed(3)} | RSI6 ${info.rsi6.toFixed(1)} | 强度 ${info.strength}`;
+  // 浏览器原生通知
+  if ($('optNotify').checked && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(title, { body, tag: `${etf.code}-${info.signal}`, requireInteraction: false });
+      n.onclick = () => { window.focus(); n.close(); };
+      setTimeout(() => n.close(), 8000);
+    } catch (e) { console.warn(e); }
+  }
+  // 页内 toast
+  showToast(title, body, info.signal);
+  // 声音
+  playBeep(info.signal === 'BUY' ? 'buy' : 'sell');
+}
+
+/* ============================================================
+   4. 持久化状态 (localStorage)
+   ============================================================ */
+const STORAGE_KEY = 'etf_monitor_v1';
+let state = {
+  watchlist: [],         // [{code, name}]
+  lastSignals: {},       // { '510300': { signal: 'BUY', date: '2026-05-14', price, rsi6 } }
+  history: [],           // [{ time, code, name, signal, price, rsi6, source }]
+  scanCount: 0,
+  buyCount: 0,
+  sellCount: 0,
+  etfList: null,         // 缓存的 ETF 列表
+};
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) Object.assign(state, JSON.parse(raw));
+  } catch {}
+  state.lastSignals = state.lastSignals || {};
+  state.watchlist = state.watchlist || [];
+  state.history = state.history || [];
+}
+function saveState() {
+  try {
+    const s = { watchlist: state.watchlist, lastSignals: state.lastSignals, history: state.history.slice(0,500), scanCount: state.scanCount, buyCount: state.buyCount, sellCount: state.sellCount };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  } catch {}
+}
+
+/* ============================================================
+   5. A 股交易时段
+   ============================================================ */
+function inTradingHours() {
+  // 取北京时间
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const bj = new Date(utcMs + 8 * 3600 * 1000);
+  const day = bj.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const mins = bj.getUTCHours() * 60 + bj.getUTCMinutes();
+  return (mins >= 9*60+25 && mins <= 11*60+32) || (mins >= 12*60+58 && mins <= 15*60+2);
+}
+
+/* ============================================================
+   6. 监控引擎
+   ============================================================ */
+let monitorTimer = null, nextScanTime = null, isScanning = false;
+
+async function fetchAndAnalyze(code) {
+  try {
+    const { rows } = await fetchKline(code, 60);
+    const info = analyzeRows(rows);
+    if (!info) return null;
+    return { code, info };
+  } catch (e) {
+    return { code, error: e.message };
+  }
+}
+
+// 检查信号并触发通知（边沿触发：状态变化时才提醒，避免重复打扰）
+function maybeNotify(entry, source) {
+  const { code, info, name } = entry;
+  if (!info || !info.signal) {
+    // 信号消失则清除记录
+    if (state.lastSignals[code]) delete state.lastSignals[code];
+    return false;
+  }
+  const today = new Date().toISOString().slice(0,10);
+  const last = state.lastSignals[code];
+  // 同一信号当天只提醒一次（除非中间脱离过）
+  if (last && last.signal === info.signal && last.date === today) return false;
+  state.lastSignals[code] = { signal: info.signal, date: today, price: info.price, rsi6: info.rsi6 };
+  // 计数
+  if (info.signal === 'BUY') state.buyCount++; else state.sellCount++;
+  // 历史
+  state.history.unshift({
+    time: nowFull(), code, name: name || nameCache[code] || code,
+    signal: info.signal, price: info.price, rsi6: info.rsi6, source,
+  });
+  if (state.history.length > 500) state.history.length = 500;
+  saveState();
+  notifySignal({ code, name: name || nameCache[code] || code }, info);
+  return true;
+}
+
+async function scanWatchlist() {
+  if (!state.watchlist.length) { _lastWatchResults = []; return; }
+  const results = await Promise.all(state.watchlist.map(w => fetchAndAnalyze(w.code).then(r => r ? { ...r, name: w.name } : null)));
+  const valid = results.filter(Boolean);
+  for (const r of valid) maybeNotify(r, '持仓');
+  renderWatchlist(valid);
+  _lastWatchResults = valid;
+}
+
+async function scanMarket() {
+  const liqMin = +$('liqFilter').value;
+  if (liqMin <= 0) { $('marketStatus').textContent = '全市场扫描已关闭'; return; }
+  $('marketStatus').innerHTML = '<span class="loader"></span> 拉取 ETF 列表...';
+  if (!state.etfList) state.etfList = await fetchAllETFs();
+  state.etfList.forEach(e => nameCache[e.code] = e.name);
+  const filtered = state.etfList.filter(e => (e.amount || 0) >= liqMin);
+  $('marketStatus').innerHTML = `<span class="loader"></span> 扫描 ${filtered.length} 只（${fmtAmount(liqMin)} 以上）...`;
+
+  const queue = [...filtered], results = [];
+  const concurrency = 8;
+  async function worker() {
+    while (queue.length) {
+      const etf = queue.shift();
+      const r = await fetchAndAnalyze(etf.code);
+      if (r && r.info) {
+        r.name = etf.name;
+        results.push(r);
+        if (r.info.signal) maybeNotify(r, '全市场');
+      }
+    }
+  }
+  await Promise.all(Array(concurrency).fill(0).map(() => worker()));
+  renderMarket(results);
+  _lastMarketResults = results;
+  $('marketStatus').innerHTML = `<span class="text-green-600">✓ 已扫描 ${results.length} 只 · ${nowTime()}</span>`;
+}
+
+async function doScan() {
+  if (isScanning) return;
+  if (!$('optOffHours').checked && !inTradingHours()) {
+    $('statusText').innerHTML = '<span class="text-orange-600">⏸ 暂停（非交易时段）</span>';
+    scheduleNext();
+    return;
+  }
+  isScanning = true;
+  $('statusText').innerHTML = '<span class="loader"></span> 扫描中...';
+  try {
+    await scanWatchlist();
+    await scanMarket();
+    state.scanCount++;
+    $('lastScan').textContent = nowTime();
+    $('scanCount').textContent = state.scanCount;
+    $('buyCount').textContent = state.buyCount;
+    $('sellCount').textContent = state.sellCount;
+    renderHistory();
+    renderOperationGuide();
+    saveState();
+    $('statusText').innerHTML = '<span class="text-green-600">● 运行中</span>';
+  } catch (e) {
+    $('statusText').innerHTML = `<span class="text-red-600">✗ ${e.message}</span>`;
+  } finally {
+    isScanning = false;
+    scheduleNext();
+  }
+}
+
+function scheduleNext() {
+  if (!monitorTimer) return;
+  const interval = +$('interval').value * 1000;
+  nextScanTime = Date.now() + interval;
+  clearTimeout(monitorTimer);
+  monitorTimer = setTimeout(doScan, interval);
+  updateNextScanText();
+}
+
+function updateNextScanText() {
+  if (!nextScanTime) { $('nextScan').textContent = '-'; return; }
+  const remain = Math.max(0, Math.round((nextScanTime - Date.now()) / 1000));
+  const mm = Math.floor(remain / 60), ss = remain % 60;
+  $('nextScan').textContent = mm > 0 ? `${mm}分${ss}秒后` : `${ss}秒后`;
+}
+
+function startMonitor() {
+  if (monitorTimer) return;
+  monitorTimer = setTimeout(() => {}, 0);  // 哨兵让 scheduleNext 知道在运行中
+  $('btnToggle').textContent = '⏸ 停止监控';
+  doScan();
+}
+function stopMonitor() {
+  if (monitorTimer) clearTimeout(monitorTimer);
+  monitorTimer = null;
+  nextScanTime = null;
+  $('btnToggle').textContent = '▶ 启动监控';
+  $('statusText').innerHTML = '<span class="text-gray-500">未启动</span>';
+  $('nextScan').textContent = '-';
+}
+
+/* ============================================================
+   7. UI 渲染
+   ============================================================ */
+function colorBy(v, lo, hi) {
+  // 给 RSI 渐变上色：<lo 绿、>hi 红、中间灰
+  if (v <= lo) return '#16a34a';
+  if (v >= hi) return '#dc2626';
+  return '#6b7280';
+}
+
+function renderWatchlist(infoList = null) {
+  const tbody = $('watchBody');
+  if (!state.watchlist.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6 text-gray-500">还没有添加持仓 ETF，上方输入框输入 6 位代码后点"添加"</td></tr>';
+    return;
+  }
+  const infoMap = {};
+  (infoList || []).forEach(r => infoMap[r.code] = r);
+  tbody.innerHTML = state.watchlist.map(w => {
+    const r = infoMap[w.code];
+    const info = r?.info;
+    let rowClass = '';
+    let signalCell = '<span class="text-gray-400">-</span>';
+    if (info?.signal === 'BUY') {
+      rowClass = 'row-buy';
+      signalCell = `<span class="badge tag-buy">🟢 买入 · 强度 ${info.strength}</span>`;
+    } else if (info?.signal === 'SELL') {
+      rowClass = 'row-sell';
+      signalCell = `<span class="badge tag-sell">🔴 卖出 · 强度 ${info.strength}</span>`;
+    } else if (info) {
+      signalCell = '<span class="text-gray-400 text-xs">-</span>';
+    }
+    const sigRecord = state.lastSignals[w.code];
+    const sigTime = sigRecord ? sigRecord.date : '-';
+    const rsiColor = info ? (info.rsi6 < 20 ? '#16a34a' : info.rsi6 > 80 ? '#dc2626' : '#6b7280') : '';
+    const bbBar = info ? `<span class="bb-bar"><span class="pin" style="left:${Math.max(0, Math.min(100, info.bbPos*100))}%"></span></span><span class="text-xs text-gray-500 ml-1">${(info.bbPos*100).toFixed(0)}%</span>` : '-';
+    const rsiBar = info ? `<span class="gauge"><span class="pin" style="left:${Math.max(0, Math.min(100, info.rsi6))}%"></span></span><span class="num text-xs ml-1" style="color:${rsiColor}">${info.rsi6.toFixed(1)}</span>` : '-';
+    const chgColor = info?.chgPct >= 0 ? '#16a34a' : '#dc2626';
+    const safeName = String(w.name || nameCache[w.code] || w.code).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    return `<tr class="border-b ${rowClass}" data-code="${w.code}" data-name="${safeName}">
+      <td class="px-3 py-2 font-mono">${w.code}</td>
+      <td class="px-3 py-2">${w.name || nameCache[w.code] || '-'}</td>
+      <td class="px-3 py-2 text-right num">${info ? info.price.toFixed(3) : '-'}</td>
+      <td class="px-3 py-2 text-right num" style="color:${chgColor}">${info ? (info.chgPct>=0?'+':'') + info.chgPct.toFixed(2) + '%' : '-'}</td>
+      <td class="px-3 py-2">${bbBar}</td>
+      <td class="px-3 py-2">${rsiBar}</td>
+      <td class="px-3 py-2">${signalCell}</td>
+      <td class="px-3 py-2 text-xs text-gray-500">${sigTime}</td>
+      <td class="px-3 py-2 whitespace-nowrap text-center">
+        <button class="row-action chart" data-action="chart" title="查看走势图">📈</button>
+        <button class="row-action" data-rm="${w.code}" title="从持仓移除" style="border-color:#fca5a5;color:#dc2626">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('button[data-rm]').forEach(btn => {
+    btn.addEventListener('click', () => removeWatch(btn.dataset.rm));
+  });
+}
+
+function renderMarket(results) {
+  const buys = results.filter(r => r.info?.signal === 'BUY').sort((a,b) => b.info.strength - a.info.strength);
+  const sells = results.filter(r => r.info?.signal === 'SELL').sort((a,b) => b.info.strength - a.info.strength);
+  const escName = (s) => String(s || '').replace(/"/g, '&quot;');
+  const fmtRow = (r) => {
+    const i = r.info;
+    const upperColor = i.price > i.bbUpper ? '#dc2626' : '#6b7280';
+    const lowerColor = i.price < i.bbLower ? '#16a34a' : '#6b7280';
+    return `<tr class="border-b hover:bg-gray-50" data-code="${r.code}" data-name="${escName(r.name)}">
+      <td class="px-2 py-1 font-mono">${r.code}</td>
+      <td class="px-2 py-1">${r.name || ''}</td>
+      <td class="px-2 py-1 text-right num font-semibold">${i.price.toFixed(3)}</td>
+      <td class="px-2 py-1 text-right num" style="color:${upperColor}">${i.bbUpper.toFixed(3)}</td>
+      <td class="px-2 py-1 text-right num text-gray-500">${i.bbMid.toFixed(3)}</td>
+      <td class="px-2 py-1 text-right num" style="color:${lowerColor}">${i.bbLower.toFixed(3)}</td>
+      <td class="px-2 py-1 text-right num" style="color:${i.rsi6 < 30 ? '#16a34a' : i.rsi6 > 70 ? '#dc2626' : '#6b7280'}">${i.rsi6.toFixed(1)}</td>
+      <td class="px-2 py-1 text-right num font-semibold">${i.strength}</td>
+      <td class="px-2 py-1 text-center whitespace-nowrap">
+        <button class="row-action add"   data-action="add"   title="加入持仓自选">➕</button>
+        <button class="row-action chart" data-action="chart" title="查看走势图">📈</button>
+      </td>
+    </tr>`;
+  };
+  $('buyList').innerHTML  = buys.length  ? buys.map(fmtRow).join('')  : '<tr><td colspan="9" class="text-center py-3 text-gray-400">暂无</td></tr>';
+  $('sellList').innerHTML = sells.length ? sells.map(fmtRow).join('') : '<tr><td colspan="9" class="text-center py-3 text-gray-400">暂无</td></tr>';
+}
+
+// 统一加自选逻辑
+function addToWatchlistByCode(code, name) {
+  if (state.watchlist.some(w => w.code === code)) {
+    showToast('已在持仓', `${code} ${name || ''}`, 'BUY');
+    return;
+  }
+  state.watchlist.push({ code, name: name || nameCache[code] || code });
+  saveState();
+  renderWatchlist();
+  showToast('已加入持仓', `${code} ${name || ''}`, 'BUY');
+  scanWatchlist();
+}
+
+// 委托事件：四个表共用同一套 ➕/📈 动作处理
+function bindMarketTableActions() {
+  ['buyList', 'sellList', 'watchBody', 'historyBody'].forEach(id => {
+    const el = $(id);
+    if (!el || el._bound) return;
+    el._bound = true;
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const tr = btn.closest('tr[data-code]');
+      if (!tr) return;
+      const code = tr.dataset.code, name = tr.dataset.name || '';
+      if (btn.dataset.action === 'add')   addToWatchlistByCode(code, name);
+      else if (btn.dataset.action === 'chart') openChartModal(code, name);
+    });
+  });
+}
+
+/* ============================================================
+   今日操作指南：综合市场情绪 + 持仓技术面 + 高质量信号
+   ============================================================ */
+let _lastWatchResults = null;
+let _lastMarketResults = null;
+
+function renderOperationGuide() {
+  const watchResults = _lastWatchResults || [];
+  const marketResults = _lastMarketResults || [];
+  const guide = $('guideContent');
+  if (!watchResults.length && !marketResults.length) {
+    guide.innerHTML = '<div class="text-sm text-gray-500 text-center py-6">📋 还没有扫描数据。点击顶部"立即扫描"或"启动监控"后，自动生成今日操作建议</div>';
+    return;
+  }
+
+  const sections = [];
+
+  // ---------- 1. 大盘情绪综述 ----------
+  if (marketResults.length) {
+    const buys = marketResults.filter(r => r.info?.signal === 'BUY').length;
+    const sells = marketResults.filter(r => r.info?.signal === 'SELL').length;
+    const total = marketResults.length;
+    const avgRsi = marketResults.reduce((s,r) => s + (r.info?.rsi6 || 50), 0) / total;
+    const ratio = (sells + 1) / (buys + 1);  // +1 避免除零
+    let mood, moodColor, advice;
+    if (ratio > 3)       { mood = '强势超买，风险积聚';    moodColor='#dc2626'; advice = '<strong>整体偏热</strong>，卖出信号是买入信号的 3 倍以上。<strong>建议防守减仓，不追高</strong>，可逢高减持估值偏贵品种'; }
+    else if (ratio > 1.5){ mood = '偏弱';                  moodColor='#ea580c'; advice = '卖出信号多于买入。<strong>建议谨慎建仓</strong>，只参与强信号超卖反弹，仓位控制在 5 成以下'; }
+    else if (ratio > 0.7){ mood = '震荡均衡';              moodColor='#d97706'; advice = '买卖信号大致平衡，市场处于震荡。<strong>按个股技术面操作</strong>，规避追涨杀跌'; }
+    else if (ratio > 0.33){mood = '偏强';                  moodColor='#16a34a'; advice = '买入信号多于卖出。<strong>可适度参与超卖反弹</strong>，关注高强度信号 ETF'; }
+    else                 { mood = '强势超卖，机会显著';    moodColor='#15803d'; advice = '<strong>买入信号显著占优</strong>。可较积极建仓，但单只仓位仍需控制（避免全押同一赛道）'; }
+
+    const rsiTone = avgRsi < 30 ? '<strong style="color:#16a34a">偏低（超卖区）</strong>'
+                  : avgRsi > 70 ? '<strong style="color:#dc2626">偏高（超买区）</strong>'
+                  : '<strong>中性</strong>';
+
+    sections.push(`<div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-base font-bold">📊 市场情绪综述</span>
+        <span class="badge" style="background:${moodColor}20;color:${moodColor};border:1px solid ${moodColor}50">${mood}</span>
+      </div>
+      <div class="text-sm text-gray-700 leading-relaxed">
+        已扫描 <strong class="num">${total}</strong> 只 ETF：
+        🟢 买入 <strong class="num" style="color:#16a34a">${buys}</strong> 只（${(buys/total*100).toFixed(1)}%）·
+        🔴 卖出 <strong class="num" style="color:#dc2626">${sells}</strong> 只（${(sells/total*100).toFixed(1)}%）·
+        卖买比 <strong class="num">${ratio.toFixed(2)}:1</strong> ·
+        全市场 RSI6 均值 <strong class="num">${avgRsi.toFixed(1)}</strong> ${rsiTone}
+        <div class="mt-2">💡 ${advice}</div>
+      </div>
+    </div>`);
+  }
+
+  // ---------- 2. 持仓 ETF 操作建议 ----------
+  if (watchResults.length) {
+    const cards = watchResults.map(r => generatePositionCard(r)).join('');
+    sections.push(`<div>
+      <div class="text-base font-bold mb-2">📌 持仓 ETF 操作建议 (${watchResults.length} 只)</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${cards}</div>
+    </div>`);
+  } else {
+    sections.push(`<div class="bg-gray-50 rounded p-3 text-sm text-gray-500">
+      📌 暂无持仓 ETF。上方添加你关注的 ETF（建议 5-10 只），系统会针对每只生成详细操作建议
+    </div>`);
+  }
+
+  // ---------- 3. 高质量信号推荐 ----------
+  if (marketResults.length) {
+    const topBuys  = marketResults.filter(r => r.info?.signal === 'BUY' ).sort((a,b)=>b.info.strength-a.info.strength).slice(0, 5);
+    const topSells = marketResults.filter(r => r.info?.signal === 'SELL').sort((a,b)=>b.info.strength-a.info.strength).slice(0, 5);
+    const sigList = (arr, kind) => arr.length ? arr.map((r,i) => {
+      const ico = kind === 'BUY' ? '🟢' : '🔴';
+      const cls = kind === 'BUY' ? 'border-green-200 hover:bg-green-50' : 'border-red-200 hover:bg-red-50';
+      const inHold = state.watchlist.some(w => w.code === r.code);
+      return `<div class="border rounded p-2 ${cls} text-xs flex items-center justify-between cursor-pointer" data-code="${r.code}" data-name="${r.name}">
+        <div>
+          <div class="font-semibold">${ico} ${r.name} <span class="text-gray-500 font-mono">${r.code}</span> ${inHold?'<span class="badge tag-warn ml-1">已持仓</span>':''}</div>
+          <div class="text-gray-600 mt-0.5 num">价 ${r.info.price.toFixed(3)} · RSI ${r.info.rsi6.toFixed(1)} · 强度 ${r.info.strength}</div>
+        </div>
+        <div class="flex gap-1">
+          <button class="row-action add"   data-action="add"   title="加入持仓">➕</button>
+          <button class="row-action chart" data-action="chart" title="查看走势图">📈</button>
+        </div>
+      </div>`;
+    }).join('') : `<div class="text-xs text-gray-400 py-2 text-center">暂无</div>`;
+    sections.push(`<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div>
+        <div class="font-semibold text-green-700 text-sm mb-2">💎 高质量买入信号 Top 5（强度排序）</div>
+        <div class="space-y-2" id="guideTopBuy">${sigList(topBuys, 'BUY')}</div>
+      </div>
+      <div>
+        <div class="font-semibold text-red-700 text-sm mb-2">💎 高质量卖出信号 Top 5（强度排序）</div>
+        <div class="space-y-2" id="guideTopSell">${sigList(topSells, 'SELL')}</div>
+      </div>
+    </div>`);
+  }
+
+  // ---------- 4. 风险提示 ----------
+  sections.push(`<div class="text-xs text-gray-500 border-t pt-2">
+    ⚠️ <strong>操作建议仅供参考</strong>：本指南基于 BB(20,2)+RSI(6) 双指标 + 市场广度数据综合分析，
+    不构成投资建议。实际操作请结合 1) 板块基本面（如有重大利空/政策变化优先回避）2) 你的总仓位（单只 &lt; 20%）3) 自己的风险承受能力。
+    技术信号在强趋势中可能失效，建议加止损位严格执行。
+  </div>`);
+
+  guide.innerHTML = sections.join('<div class="my-3"></div>');
+}
+
+// 单只持仓的操作建议卡片
+function generatePositionCard(r) {
+  const i = r.info;
+  if (!i) {
+    return `<div class="border rounded p-3 bg-gray-50">
+      <div class="font-semibold text-sm">${r.name} <span class="text-gray-500 font-mono">${r.code}</span></div>
+      <div class="text-xs text-gray-500 mt-1">数据加载失败</div>
+    </div>`;
+  }
+  const bbPos = i.bbPos;
+  const rsi = i.rsi6;
+  const chgPct = i.chgPct;
+  const chgColor = chgPct >= 0 ? '#16a34a' : '#dc2626';
+
+  let title, titleColor, headerBg, reason, levels = [];
+
+  if (i.signal === 'BUY') {
+    title = '🟢 强烈建议：分批低吸';
+    titleColor = '#16a34a';
+    headerBg = 'bg-green-50 border-green-300';
+    reason = `<strong>已触发买入信号</strong>：价格跌破 BB 下轨（位置 ${(bbPos*100).toFixed(0)}%）+ RSI6=${rsi.toFixed(1)} 进入超卖。强度评分 <strong>${i.strength}</strong>，技术面支持低吸。`;
+    levels = [
+      ['现价建仓 30-40%', i.price.toFixed(3), '#3b82f6'],
+      ['加仓位（跌破再补 30%）', (i.bbLower * 0.97).toFixed(3), '#16a34a'],
+      ['止损位（跌破清仓）', (i.bbLower * 0.94).toFixed(3), '#dc2626'],
+      ['目标位 1（BB 中轨）', i.bbMid.toFixed(3), '#d97706'],
+      ['目标位 2（BB 上轨）', i.bbUpper.toFixed(3), '#16a34a'],
+    ];
+  } else if (i.signal === 'SELL') {
+    title = '🔴 强烈建议：分批高抛';
+    titleColor = '#dc2626';
+    headerBg = 'bg-red-50 border-red-300';
+    reason = `<strong>已触发卖出信号</strong>：价格突破 BB 上轨（位置 ${(bbPos*100).toFixed(0)}%）+ RSI6=${rsi.toFixed(1)} 进入超买。强度评分 <strong>${i.strength}</strong>，技术面支持高抛减仓。`;
+    levels = [
+      ['现价立即减仓 30-50%', i.price.toFixed(3), '#dc2626'],
+      ['反弹再抛位', (i.bbUpper * 1.03).toFixed(3), '#dc2626'],
+      ['回调止损（保留底仓回踩）', i.bbMid.toFixed(3), '#d97706'],
+    ];
+  } else if (bbPos < 0.25 && rsi < 30) {
+    title = '🟡 关注：等买入信号确认';
+    titleColor = '#d97706';
+    headerBg = 'bg-amber-50 border-amber-300';
+    reason = `当前接近 BB 下轨（位置 ${(bbPos*100).toFixed(0)}%）+ RSI=${rsi.toFixed(1)} 接近超卖，<strong>但还未完全确认</strong>。耐心等价格跌破 BB 下轨并配合 RSI&lt;20 时再出手。`;
+    levels = [
+      ['关注价位（BB 下轨）', i.bbLower.toFixed(3), '#3b82f6'],
+      ['信号触发条件', 'RSI < 20', '#16a34a'],
+    ];
+  } else if (bbPos > 0.75 && rsi > 70) {
+    title = '🟠 注意：等卖出信号确认';
+    titleColor = '#ea580c';
+    headerBg = 'bg-orange-50 border-orange-300';
+    reason = `当前接近 BB 上轨（位置 ${(bbPos*100).toFixed(0)}%）+ RSI=${rsi.toFixed(1)} 接近超买，<strong>但还未完全确认</strong>。准备减仓但不急于行动。`;
+    levels = [
+      ['关注价位（BB 上轨）', i.bbUpper.toFixed(3), '#dc2626'],
+      ['信号触发条件', 'RSI > 80', '#dc2626'],
+    ];
+  } else if (bbPos >= 0.35 && bbPos <= 0.65) {
+    title = '⚪ 持有观望';
+    titleColor = '#6b7280';
+    headerBg = 'bg-gray-50 border-gray-300';
+    reason = `价格位于 BB 中间区域（位置 ${(bbPos*100).toFixed(0)}%）+ RSI=${rsi.toFixed(1)} 中性，<strong>无明确操作信号</strong>。持有原仓位等待方向。`;
+    levels = [
+      ['上方关注位', i.bbUpper.toFixed(3), '#dc2626'],
+      ['下方关注位', i.bbLower.toFixed(3), '#16a34a'],
+    ];
+  } else if (bbPos > 0.65) {
+    title = '🟡 偏高，控制仓位';
+    titleColor = '#d97706';
+    headerBg = 'bg-yellow-50 border-yellow-300';
+    reason = `价格偏向上轨（位置 ${(bbPos*100).toFixed(0)}%），RSI=${rsi.toFixed(1)}。<strong>追高风险偏大</strong>，建议持有但不加仓，浮盈较多可考虑部分止盈。`;
+    levels = [
+      ['压力位', i.bbUpper.toFixed(3), '#dc2626'],
+      ['若回到中轨可加仓', i.bbMid.toFixed(3), '#d97706'],
+    ];
+  } else {
+    title = '🟢 偏低，积极观察';
+    titleColor = '#16a34a';
+    headerBg = 'bg-green-50 border-green-200';
+    reason = `价格偏向下轨（位置 ${(bbPos*100).toFixed(0)}%），RSI=${rsi.toFixed(1)}。<strong>价格相对便宜</strong>，等待技术信号确认后可分批建仓。`;
+    levels = [
+      ['支撑位', i.bbLower.toFixed(3), '#16a34a'],
+      ['等买入信号', 'RSI < 20 + 跌破下轨', '#3b82f6'],
+    ];
+  }
+
+  const levelsHtml = levels.map(([l, v, c]) =>
+    `<div class="flex justify-between text-xs"><span class="text-gray-600">${l}</span><strong class="num" style="color:${c}">${v}</strong></div>`
+  ).join('');
+
+  return `<div class="border rounded-lg ${headerBg}" data-code="${r.code}" data-name="${r.name}">
+    <div class="px-3 pt-2 pb-1">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="font-bold text-sm">${r.name}</span>
+          <span class="text-gray-500 text-xs font-mono ml-1">${r.code}</span>
+        </div>
+        <button class="row-action chart" data-action="chart" title="走势图">📈</button>
+      </div>
+      <div class="flex items-baseline gap-2 mt-1">
+        <span class="text-xl font-bold num">${i.price.toFixed(3)}</span>
+        <span class="text-sm num" style="color:${chgColor}">${chgPct>=0?'+':''}${chgPct.toFixed(2)}%</span>
+      </div>
+    </div>
+    <div class="px-3 py-2 bg-white/60">
+      <div class="font-bold text-sm" style="color:${titleColor}">${title}</div>
+      <div class="text-xs text-gray-700 mt-1 leading-relaxed">${reason}</div>
+    </div>
+    <div class="px-3 py-2 bg-white/40 space-y-1">${levelsHtml}</div>
+  </div>`;
+}
+
+// 绑定指南区域的点击事件（与其他表共用）
+function bindGuideActions() {
+  const el = $('guideContent');
+  if (!el || el._bound) return;
+  el._bound = true;
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const tr = btn.closest('[data-code]');
+    if (!tr) return;
+    const code = tr.dataset.code, name = tr.dataset.name || '';
+    if (btn.dataset.action === 'add')   addToWatchlistByCode(code, name);
+    else if (btn.dataset.action === 'chart') openChartModal(code, name);
+  });
+}
+
+function renderHistory() {
+  const tbody = $('historyBody');
+  if (!state.history.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-3 text-gray-400">暂无信号</td></tr>';
+    return;
+  }
+  const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  tbody.innerHTML = state.history.slice(0, 100).map(h => `
+    <tr class="border-b" data-code="${h.code}" data-name="${esc(h.name)}">
+      <td class="px-3 py-1 text-xs text-gray-600 num">${h.time}</td>
+      <td class="px-3 py-1 font-mono">${h.code}</td>
+      <td class="px-3 py-1">${h.name}</td>
+      <td class="px-3 py-1"><span class="badge ${h.signal === 'BUY' ? 'tag-buy' : 'tag-sell'}">${h.signal === 'BUY' ? '🟢 买入' : '🔴 卖出'}</span></td>
+      <td class="px-3 py-1 text-right num">${(+h.price).toFixed(3)}</td>
+      <td class="px-3 py-1 text-right num">${(+h.rsi6).toFixed(1)}</td>
+      <td class="px-3 py-1 text-xs text-gray-500">${h.source || '-'}</td>
+      <td class="px-3 py-1 text-center whitespace-nowrap">
+        <button class="row-action add"   data-action="add"   title="加入持仓">➕</button>
+        <button class="row-action chart" data-action="chart" title="查看走势图">📈</button>
+      </td>
+    </tr>`).join('');
+}
+
+/* ============================================================
+   X. 策略历史回测：遍历每一天的 BB+RSI 信号、模拟买卖、统计
+   ============================================================ */
+/* 已移除策略历史回测，下面 backtestBBRSI 仍保留作为内部工具但暂未使用 */
+function backtestBBRSI(rows, opts = {}) {
+  const { strategy = 'strict', trailingStop = 0.10, startIdx = 0 } = opts;
+  if (!rows || rows.length < 30) return null;
+  const closes = rows.map(r => r.close);
+  const n = closes.length;
+
+  // BB(20)
+  const bbUpper = new Array(n).fill(NaN);
+  const bbLower = new Array(n).fill(NaN);
+  for (let i = 19; i < n; i++) {
+    let sum = 0;
+    for (let j = i-19; j <= i; j++) sum += closes[j];
+    const mean = sum / 20;
+    let v = 0;
+    for (let j = i-19; j <= i; j++) v += (closes[j] - mean) ** 2;
+    const std = Math.sqrt(v / 20);
+    bbUpper[i] = mean + 2*std;
+    bbLower[i] = mean - 2*std;
+  }
+
+  // RSI 通用计算
+  function rsiSeries(period) {
+    const out = new Array(n).fill(NaN);
+    if (n <= period) return out;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const d = closes[i] - closes[i-1];
+      if (d > 0) gains += d; else losses -= d;
+    }
+    let avgG = gains / period, avgL = losses / period;
+    out[period] = avgL === 0 ? 100 : 100 - 100/(1 + avgG/avgL);
+    for (let i = period + 1; i < n; i++) {
+      const d = closes[i] - closes[i-1];
+      const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+      avgG = (avgG*(period-1) + g)/period;
+      avgL = (avgL*(period-1) + l)/period;
+      out[i] = avgL === 0 ? 100 : 100 - 100/(1 + avgG/avgL);
+    }
+    return out;
+  }
+  const rsi6 = rsiSeries(6);
+  const rsi14 = rsiSeries(14);
+
+  // MA200（多个策略需要，统一计算）
+  const ma200 = new Array(n).fill(NaN);
+  if (n >= 200) {
+    let sum = 0;
+    for (let i = 0; i < 200; i++) sum += closes[i];
+    ma200[199] = sum / 200;
+    for (let i = 200; i < n; i++) {
+      sum += closes[i] - closes[i - 200];
+      ma200[i] = sum / 200;
+    }
+  }
+
+  // %B 计算
+  const pctB = (i) => {
+    if (isNaN(bbUpper[i]) || isNaN(bbLower[i])) return NaN;
+    const w = bbUpper[i] - bbLower[i];
+    return w > 0 ? (closes[i] - bbLower[i]) / w : 0.5;
+  };
+
+  // 找过去 lookback 天内最近一次"超卖触底"点（用于背离）
+  function findPriorOversold(i, lookback = 30) {
+    for (let j = i - 3; j >= Math.max(0, i - lookback); j--) {
+      if (isNaN(rsi14[j])) continue;
+      const pb = pctB(j);
+      if (!isNaN(pb) && pb < 0.10 && rsi14[j] < 30) {
+        return { idx: j, rsi: rsi14[j], price: closes[j] };
+      }
+    }
+    return null;
+  }
+  function findPriorOverbought(i, lookback = 30) {
+    for (let j = i - 3; j >= Math.max(0, i - lookback); j--) {
+      if (isNaN(rsi14[j])) continue;
+      const pb = pctB(j);
+      if (!isNaN(pb) && pb > 0.90 && rsi14[j] > 70) {
+        return { idx: j, rsi: rsi14[j], price: closes[j] };
+      }
+    }
+    return null;
+  }
+
+  // 模拟交易（已扣 0.03% 成本）
+  const tradeCost = 0.0003;
+  const trades = [];
+  let inPos = false, entry = null, peakSinceEntry = 0;
+  let buySigCount = 0, sellSigCount = 0;
+
+  const actualStart = Math.max(19, startIdx);
+  for (let i = actualStart; i < n; i++) {
+    if (isNaN(bbUpper[i])) continue;
+    const price = closes[i];
+    if (inPos && price > peakSinceEntry) peakSinceEntry = price;
+
+    // 通用基础信号（用于诊断列）
+    const stdBuy  = !isNaN(rsi6[i]) && price < bbLower[i] && rsi6[i] < 20;
+    const stdSell = !isNaN(rsi6[i]) && price > bbUpper[i] && rsi6[i] > 80;
+    if (stdBuy) buySigCount++;
+    if (stdSell) sellSigCount++;
+
+    // 按策略决定 isBuy / isExit
+    let isBuy = false, isExit = false, entryRsi = null;
+    if (strategy === 'strict') {
+      isBuy = stdBuy;
+      if (inPos) isExit = stdSell;
+      entryRsi = rsi6[i];
+    } else if (strategy === 'trend_filter') {
+      isBuy = stdBuy;
+      if (inPos) isExit = stdSell && !isNaN(ma200[i]) && price < ma200[i];
+      entryRsi = rsi6[i];
+    } else if (strategy === 'trail_stop') {
+      isBuy = stdBuy;
+      if (inPos) isExit = price < peakSinceEntry * (1 - trailingStop);
+      entryRsi = rsi6[i];
+    } else if (strategy === 'pctb_rsi14_ma') {
+      // 模型1：%B + RSI(14) + MA200 趋势过滤
+      if (!isNaN(rsi14[i])) {
+        const pb = pctB(i);
+        if (!isNaN(ma200[i])) {
+          isBuy  = pb < 0.05 && rsi14[i] < 30 && price > ma200[i];
+          if (inPos) isExit = pb > 0.95 && rsi14[i] > 70 && price < ma200[i];
+        }
+      }
+      entryRsi = rsi14[i];
+    } else if (strategy === 'rsi_divergence') {
+      // 模型2：底背离买、顶背离卖（同时叠加基本超买超卖）
+      if (!isNaN(rsi14[i])) {
+        const pb = pctB(i);
+        if (!isNaN(pb) && pb < 0.10 && rsi14[i] < 30) {
+          const prior = findPriorOversold(i, 30);
+          if (prior && closes[i] <= prior.price && rsi14[i] > prior.rsi) {
+            isBuy = true;
+          }
+        }
+        if (inPos && !isNaN(pb) && pb > 0.90 && rsi14[i] > 70) {
+          const prior = findPriorOverbought(i, 30);
+          if (prior && closes[i] >= prior.price && rsi14[i] < prior.rsi) {
+            isExit = true;
+          }
+        }
+      }
+      entryRsi = rsi14[i];
+    }
+
+    if (isBuy && !inPos) {
+      inPos = true;
+      entry = { date: rows[i].date, price, rsi: entryRsi, idx: i };
+      peakSinceEntry = price;
+    } else if (isExit && inPos) {
+      const exitInfo = { date: rows[i].date, price, rsi: entryRsi, idx: i };
+      const gain = (exitInfo.price * (1 - tradeCost) - entry.price * (1 + tradeCost)) / (entry.price * (1 + tradeCost));
+      trades.push({ entry, exit: exitInfo, gain, days: exitInfo.idx - entry.idx, exitReason: strategy });
+      inPos = false; entry = null; peakSinceEntry = 0;
+    }
+  }
+
+  const wins = trades.filter(t => t.gain > 0).length;
+  const losses = trades.filter(t => t.gain < 0).length;
+  const winRate = trades.length > 0 ? wins / trades.length : 0;
+  const avgGain = trades.length > 0 ? trades.reduce((s,t) => s + t.gain, 0) / trades.length : 0;
+
+  let compound = 1;
+  for (const t of trades) compound *= (1 + t.gain);
+  let openInfo = null;
+  if (inPos && entry) {
+    const lastPrice = closes[n-1];
+    const unreal = (lastPrice * (1 - tradeCost) - entry.price * (1 + tradeCost)) / (entry.price * (1 + tradeCost));
+    compound *= (1 + unreal);
+    openInfo = { ...entry, currentPrice: lastPrice, unrealizedGain: unreal };
+  }
+  const strategyReturn = compound - 1;
+  // 买入持有：基于回测区间起始价
+  const backtestStartPrice = closes[actualStart];
+  const buyHoldReturn = (closes[n-1] - backtestStartPrice) / backtestStartPrice;
+
+  return {
+    trades, buySigCount, sellSigCount,
+    completedTrades: trades.length, wins, losses,
+    winRate, avgGain,
+    strategyReturn, buyHoldReturn,
+    excess: strategyReturn - buyHoldReturn,
+    openPosition: openInfo,
+    strategy,
+    period: { start: rows[actualStart]?.date, end: rows[n-1].date, days: n - actualStart },
+  };
+}
+
+/* runBacktest 已移除（功能改为"今日操作指南"） */
+
+function renderBacktestResult_REMOVED(results, days) {
+  return; // 已废弃，下方代码保留供参考
+  const retColor = (v) => v >= 0 ? '#16a34a' : '#dc2626';
+  const fmtSigned = (v) => (v == null || isNaN(v)) ? '-' : (v >= 0 ? '+' : '') + (v*100).toFixed(2) + '%';
+  const stratLabels = {
+    strict:         { name: '① 原版 严格 BB+RSI6', color: '#6b7280', desc: '跌破 BB 下轨 + RSI(6)&lt;20 买；突破 BB 上轨 + RSI(6)&gt;80 卖' },
+    trend_filter:   { name: '② +MA200 趋势过滤', color: '#3b82f6', desc: '同①，但卖信号仅在 price &lt; MA200 时执行（上升趋势中不卖）' },
+    trail_stop:     { name: '③ 只买 + 10% 追踪止盈', color: '#7c3aed', desc: '买信号买，从买入后最高点回撤 10% 才卖' },
+    pctb_rsi14_ma:  { name: '④ 模型1 · %B+RSI14+MA200', color: '#0891b2', desc: '%B&lt;0.05 + RSI(14)&lt;30 + price&gt;MA200 买；%B&gt;0.95 + RSI(14)&gt;70 + price&lt;MA200 卖' },
+    rsi_divergence: { name: '⑤ 模型2 · RSI14 背离', color: '#ea580c', desc: 'BB 触低位 + RSI(14) 底背离 买；BB 触高位 + RSI(14) 顶背离 卖' },
+  };
+  const stratKeys = ['strict', 'trend_filter', 'trail_stop', 'pctb_rsi14_ma', 'rsi_divergence'];
+
+  // 主表：每只 ETF 三行
+  const rowsHtml = results.map((r, ri) => {
+    return stratKeys.map((sk, si) => {
+      const b = r.strategies[sk];
+      if (!b) return '';
+      const stratInfo = stratLabels[sk];
+      const winRateColor = b.completedTrades > 0
+        ? (b.winRate >= 0.6 ? '#16a34a' : b.winRate >= 0.5 ? '#d97706' : '#dc2626')
+        : '#9ca3af';
+      const stateText = b.openPosition
+        ? `<span class="badge tag-warn">持仓 · ${fmtSigned(b.openPosition.unrealizedGain)}</span>`
+        : '<span class="text-xs text-gray-500">空仓</span>';
+      const isBest = b.excess === Math.max(...stratKeys.map(k => r.strategies[k]?.excess ?? -Infinity));
+      const bestMark = isBest ? '<span class="badge tag-good text-xs">最佳</span>' : '';
+      const rowBg = si === 0 ? 'bg-gray-50/40' : '';
+      const codeCell = si === 0 ? `<td class="px-2 py-1 font-mono align-top" rowspan="${stratKeys.length}">${r.code}</td><td class="px-2 py-1 align-top" rowspan="${stratKeys.length}">${r.name}</td>` : '';
+      const groupBorder = si === 0 ? 'border-t-2 border-gray-300' : 'border-b';
+      return `<tr class="${groupBorder} ${rowBg}">
+        ${codeCell}
+        <td class="px-2 py-1 text-xs" style="color:${stratInfo.color}"><strong>${stratInfo.name}</strong>${bestMark ? ' ' + bestMark : ''}</td>
+        <td class="px-2 py-1 text-right num">${b.buySigCount}</td>
+        <td class="px-2 py-1 text-right num">${b.sellSigCount}</td>
+        <td class="px-2 py-1 text-right num font-semibold">${b.completedTrades}</td>
+        <td class="px-2 py-1 text-center num"><span style="color:#16a34a">${b.wins}</span> / <span style="color:#dc2626">${b.losses}</span></td>
+        <td class="px-2 py-1 text-right num font-bold" style="color:${winRateColor}">${b.completedTrades>0?(b.winRate*100).toFixed(0)+'%':'-'}</td>
+        <td class="px-2 py-1 text-right num" style="color:${retColor(b.avgGain)}">${b.completedTrades>0?fmtSigned(b.avgGain):'-'}</td>
+        <td class="px-2 py-1 text-right num font-semibold" style="color:${retColor(b.strategyReturn)}">${fmtSigned(b.strategyReturn)}</td>
+        <td class="px-2 py-1 text-right num" style="color:${retColor(b.buyHoldReturn)}">${fmtSigned(b.buyHoldReturn)}</td>
+        <td class="px-2 py-1 text-right num font-semibold" style="color:${retColor(b.excess)}">${fmtSigned(b.excess)}</td>
+        <td class="px-2 py-1">${stateText}</td>
+      </tr>`;
+    }).join('');
+  }).join('');
+  $('btTable').innerHTML = rowsHtml;
+
+  // 汇总：按策略 3 行
+  const summaryRows = stratKeys.map(sk => {
+    const all = results.map(r => r.strategies[sk]).filter(Boolean);
+    if (!all.length) return '';
+    const trades = all.flatMap(b => b.trades);
+    const wins = trades.filter(t => t.gain > 0).length;
+    const losses = trades.filter(t => t.gain < 0).length;
+    const winRate = trades.length > 0 ? wins / trades.length : 0;
+    const avgGain = trades.length > 0 ? trades.reduce((s,t)=>s+t.gain,0) / trades.length : 0;
+    const avgStrategy = all.reduce((s,r)=>s+r.strategyReturn,0) / all.length;
+    const avgBh = all.reduce((s,r)=>s+r.buyHoldReturn,0) / all.length;
+    const winners = all.filter(b => b.excess > 0).length;
+    const stratInfo = stratLabels[sk];
+    return `<tr class="bg-blue-50 font-semibold border-t">
+      <td class="px-2 py-2 align-top" colspan="2">📊 ${stratInfo.name}<br/><span class="text-xs text-gray-500 font-normal">${stratInfo.desc}</span></td>
+      <td class="px-2 py-2"></td>
+      <td class="px-2 py-2 text-right num">${all.reduce((s,r)=>s+r.buySigCount,0)}</td>
+      <td class="px-2 py-2 text-right num">${all.reduce((s,r)=>s+r.sellSigCount,0)}</td>
+      <td class="px-2 py-2 text-right num">${trades.length}</td>
+      <td class="px-2 py-2 text-center num"><span style="color:#16a34a">${wins}</span> / <span style="color:#dc2626">${losses}</span></td>
+      <td class="px-2 py-2 text-right num" style="color:${winRate >= 0.55 ? '#16a34a' : '#d97706'}">${trades.length>0?(winRate*100).toFixed(0)+'%':'-'}</td>
+      <td class="px-2 py-2 text-right num" style="color:${retColor(avgGain)}">${trades.length>0?fmtSigned(avgGain):'-'}</td>
+      <td class="px-2 py-2 text-right num" style="color:${retColor(avgStrategy)}">${fmtSigned(avgStrategy)}</td>
+      <td class="px-2 py-2 text-right num" style="color:${retColor(avgBh)}">${fmtSigned(avgBh)}</td>
+      <td class="px-2 py-2 text-right num" style="color:${retColor(avgStrategy-avgBh)}">${fmtSigned(avgStrategy-avgBh)}</td>
+      <td class="px-2 py-2 text-xs text-gray-600">${winners}/${all.length} 跑赢持有</td>
+    </tr>`;
+  }).join('');
+  $('btSummary').innerHTML = summaryRows;
+
+  // 明细：每只 ETF 内显示 3 个策略各自的交易
+  const detailHtml = results.map(r => {
+    const subs = stratKeys.map(sk => {
+      const b = r.strategies[sk];
+      if (!b) return '';
+      const info = stratLabels[sk];
+      if (!b.trades.length && !b.openPosition) {
+        return `<div class="text-xs text-gray-500 mb-2">· <strong style="color:${info.color}">${info.name}</strong>：该周期内未触发任何完整交易</div>`;
+      }
+      const trs = b.trades.map((t,i) => `<tr class="border-b">
+        <td class="px-2 py-1 text-xs text-gray-500">#${i+1}</td>
+        <td class="px-2 py-1 num">${t.entry.date}</td>
+        <td class="px-2 py-1 text-right num">${t.entry.price.toFixed(3)}</td>
+        <td class="px-2 py-1 num">${t.exit.date}</td>
+        <td class="px-2 py-1 text-right num">${t.exit.price.toFixed(3)}</td>
+        <td class="px-2 py-1 text-right num">${t.days}d</td>
+        <td class="px-2 py-1 text-right num font-semibold" style="color:${retColor(t.gain)}">${fmtSigned(t.gain)}</td>
+      </tr>`).join('');
+      const openRow = b.openPosition ? `<tr class="bg-yellow-50">
+        <td class="px-2 py-1 text-xs">未平仓</td>
+        <td class="px-2 py-1 num">${b.openPosition.date}</td>
+        <td class="px-2 py-1 text-right num">${b.openPosition.price.toFixed(3)}</td>
+        <td class="px-2 py-1" colspan="3">现价 ${b.openPosition.currentPrice.toFixed(3)}</td>
+        <td class="px-2 py-1 text-right num font-semibold" style="color:${retColor(b.openPosition.unrealizedGain)}">${fmtSigned(b.openPosition.unrealizedGain)} (浮)</td>
+      </tr>` : '';
+      return `<div class="mb-2">
+        <div class="text-xs mb-1" style="color:${info.color}"><strong>${info.name}</strong> · ${b.completedTrades} 笔 · 胜率 ${b.completedTrades>0?(b.winRate*100).toFixed(0)+'%':'-'} · 累计 ${fmtSigned(b.strategyReturn)}</div>
+        <div class="overflow-x-auto"><table class="w-full text-xs">
+          <thead class="bg-gray-50 text-gray-600"><tr>
+            <th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">买入</th><th class="px-2 py-1 text-right">买价</th>
+            <th class="px-2 py-1 text-left">卖出</th><th class="px-2 py-1 text-right">卖价</th>
+            <th class="px-2 py-1 text-right">持有</th><th class="px-2 py-1 text-right">收益</th></tr></thead>
+          <tbody>${trs}${openRow}</tbody>
+        </table></div>
+      </div>`;
+    }).join('');
+    return `<div class="border rounded p-3 bg-white">
+      <h4 class="font-semibold text-sm mb-2">${r.code} ${r.name}</h4>
+      ${subs}
+    </div>`;
+  }).join('');
+  $('btTrades').innerHTML = detailHtml;
+
+  // 最终决策提示
+  const allTrades = stratKeys.flatMap(sk => results.flatMap(r => r.strategies[sk]?.trades || []));
+  $('btResult').classList.remove('hidden');
+  $('btStatus').innerHTML = `<span class="text-green-600">✓ 完成 · ${results.length} 只 ETF × ${stratKeys.length} 种策略 · 共 ${allTrades.length} 笔交易 · <strong>每只 ETF 的最佳策略已标记"最佳"</strong></span>`;
+}
+
+/* ============================================================
+   8. 持仓管理
+   ============================================================ */
+async function addWatch() {
+  const code = $('addCode').value.trim();
+  if (!/^\d{6}$/.test(code)) return alert('请输入正确的 6 位 ETF 代码');
+  if (state.watchlist.some(w => w.code === code)) return alert('该 ETF 已在持仓列表');
+  state.watchlist.push({ code, name: nameCache[code] || code });
+  $('addCode').value = '';
+  saveState();
+  renderWatchlist();
+  // 立即拉一次该 ETF 数据
+  const r = await fetchAndAnalyze(code);
+  if (r && r.info) {
+    state.watchlist.find(w => w.code === code).name = nameCache[code] || code;
+    maybeNotify(r, '持仓');
+    renderWatchlist([r]);
+  }
+  saveState();
+}
+
+function removeWatch(code) {
+  state.watchlist = state.watchlist.filter(w => w.code !== code);
+  saveState();
+  renderWatchlist();
+}
+
+/* ============================================================
+   9. 事件绑定 + 启动
+   ============================================================ */
+$('btnToggle').addEventListener('click', () => {
+  if (monitorTimer) stopMonitor(); else { ensureNotificationPermission(); startMonitor(); }
+});
+$('btnRefreshNow').addEventListener('click', () => doScan());
+$('btnAdd').addEventListener('click', addWatch);
+$('addCode').addEventListener('keypress', e => { if (e.key === 'Enter') addWatch(); });
+$('btnClearWatch').addEventListener('click', () => {
+  if (!confirm('确认清空持仓列表？')) return;
+  state.watchlist = []; saveState(); renderWatchlist();
+});
+$('btnRefreshGuide').addEventListener('click', () => renderOperationGuide());
+$('btnClearHistory').addEventListener('click', () => {
+  if (!confirm('确认清空历史信号？')) return;
+  state.history = []; state.lastSignals = {}; state.buyCount = 0; state.sellCount = 0;
+  saveState(); renderHistory();
+  $('buyCount').textContent = '0'; $('sellCount').textContent = '0';
+});
+$('interval').addEventListener('change', () => { if (monitorTimer) scheduleNext(); });
+
+// 持续更新交易时段 + 倒计时
+setInterval(() => {
+  $('tradingHours').innerHTML = inTradingHours()
+    ? '<span class="text-green-600">是 (可监控)</span>'
+    : '<span class="text-gray-400">否</span>';
+  updateNextScanText();
+}, 1000);
+
+/* ============================================================
+   走势图模态框：手机版券商 App 风格 4 面板
+   ============================================================ */
+let _kChart = null;
+let _kCurrent = { code: null, name: null, period: 'day' };
+
+async function openChartModal(code, name) {
+  _kCurrent = { code, name: name || nameCache[code] || code, period: 'day' };
+  $('chartName').textContent = _kCurrent.name;
+  $('chartMeta').textContent = `${_kCurrent.code} · 北京时间 ${new Date().toLocaleString('zh-CN', { hour12: false }).slice(5)}`;
+  // 重置 tab
+  document.querySelectorAll('.period-tab').forEach(b => b.classList.toggle('active', b.dataset.period === 'day'));
+  $('chartModal').classList.add('show');
+  await loadChartData();
+}
+
+function closeChartModal() {
+  $('chartModal').classList.remove('show');
+  if (_kChart) { _kChart.dispose(); _kChart = null; }
+}
+
+async function loadChartData() {
+  const days = +$('chartPeriod').value;
+  const period = _kCurrent.period;
+  $('chartContainer').innerHTML = `<div style="padding:140px;text-align:center;color:#6b7280"><span class="loader"></span> 加载 ${days} 根${{day:'日K',week:'周K',month:'月K'}[period]} 数据...</div>`;
+  try {
+    const { rows } = await fetchKline(_kCurrent.code, Math.min(800, days + 30), period);
+    if (!rows || rows.length < 25) throw new Error('数据不足');
+    const slice = rows.slice(-days);
+    renderHeaderInfo(slice);
+    renderTechChart(slice);
+  } catch (e) {
+    $('chartContainer').innerHTML = `<div style="padding:140px;text-align:center;color:#dc2626">✗ ${e.message}</div>`;
+  }
+}
+
+// 渲染头部价格 + 行情信息（idx 不传则用末日；传则显示该日数据，用于鼠标跟随）
+function renderHeaderInfo(rows, idx) {
+  if (idx == null || idx < 0 || idx >= rows.length) idx = rows.length - 1;
+  const cur = rows[idx];
+  const prev = idx > 0 ? rows[idx - 1] : cur;
+  const change = cur.close - prev.close;
+  const changePct = prev.close > 0 ? change / prev.close * 100 : 0;
+  const isUp = change >= 0;
+  const cls = isUp ? 'price-up' : 'price-down';
+  const sign = isUp ? '+' : '';
+
+  $('chartPrice').textContent = cur.close.toFixed(3);
+  $('chartPrice').className = 'text-4xl font-bold num ' + cls;
+  $('chartChange').textContent = sign + change.toFixed(3);
+  $('chartChange').className = 'text-sm num ' + cls;
+  $('chartChangePct').textContent = sign + changePct.toFixed(2) + '%';
+  $('chartChangePct').className = 'text-sm num ' + cls;
+
+  const amount = cur.close * cur.vol;
+  const fmtVol = (v) => v >= 1e8 ? (v/1e8).toFixed(2)+'亿手' : v >= 1e4 ? (v/1e4).toFixed(2)+'万手' : v.toFixed(0)+'手';
+  const fmtMoney = (v) => v >= 1e8 ? (v/1e8).toFixed(2)+'亿' : (v/1e4).toFixed(2)+'万';
+  const amp = prev.close > 0 ? (cur.high - cur.low) / prev.close * 100 : 0;
+  const isLast = idx === rows.length - 1;
+  const items = [
+    ['高', cur.high.toFixed(3), 'price-up'],
+    ['低', cur.low.toFixed(3),  'price-down'],
+    ['开', cur.open.toFixed(3), ''],
+    ['昨', prev.close.toFixed(3), ''],
+    ['量', fmtVol(cur.vol / 100), ''],
+    ['额', fmtMoney(amount), ''],
+    ['振幅', amp.toFixed(2)+'%', ''],
+    ['日期', cur.date + (isLast ? '' : ' ⟵'), isLast ? '' : 'text-blue-600'],
+  ];
+  $('chartInfo').innerHTML = items.map(([l, v, c]) =>
+    `<div class="info-cell"><span class="lbl">${l}</span><span class="val ${c||''}">${v}</span></div>`
+  ).join('');
+}
+
+// 通用 EMA
+function emaSeries(arr, period) {
+  const k = 2 / (period + 1);
+  const out = [];
+  let prev = arr[0];
+  for (let i = 0; i < arr.length; i++) {
+    prev = i === 0 ? arr[i] : arr[i] * k + prev * (1 - k);
+    out.push(prev);
+  }
+  return out;
+}
+
+// 缓存最近一次渲染所用的 rows，用于开关切换时即时重绘（不再次拉数据）
+let _kCacheRows = null;
+
+function renderTechChart(rows) {
+  _kCacheRows = rows;
+  const dates = rows.map(r => r.date);
+  const closes = rows.map(r => r.close);
+  const kdata = rows.map(r => [r.open, r.close, r.low, r.high]);
+
+  // 开关状态
+  const showBOLL = $('tgBOLL')?.checked ?? true;
+  const showMA5  = $('tgMA5')?.checked  ?? false;
+  const showMA10 = $('tgMA10')?.checked ?? false;
+  const showMA20 = $('tgMA20')?.checked ?? false;
+  const showMA60 = $('tgMA60')?.checked ?? false;
+
+  // BB(20,2)
+  const bbU = [], bbM = [], bbL = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (i < 19) { bbU.push('-'); bbM.push('-'); bbL.push('-'); continue; }
+    let sum = 0; for (let j = i-19; j <= i; j++) sum += closes[j];
+    const mean = sum / 20;
+    let v = 0; for (let j = i-19; j <= i; j++) v += (closes[j] - mean) ** 2;
+    const std = Math.sqrt(v / 20);
+    bbU.push(+(mean + 2*std).toFixed(4));
+    bbM.push(+mean.toFixed(4));
+    bbL.push(+(mean - 2*std).toFixed(4));
+  }
+
+  // MA 简单移动平均
+  const maCalc = (p) => closes.map((_, i) => {
+    if (i < p - 1) return '-';
+    let s = 0; for (let j = i - p + 1; j <= i; j++) s += closes[j];
+    return +(s / p).toFixed(4);
+  });
+  const ma5 = maCalc(5), ma10 = maCalc(10), ma20 = maCalc(20), ma60 = maCalc(60);
+
+  // RSI 多周期 (Wilder)
+  const rsiCalc = (period) => {
+    const out = new Array(closes.length).fill('-');
+    if (closes.length <= period) return out;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const d = closes[i] - closes[i-1];
+      if (d > 0) gains += d; else losses -= d;
+    }
+    let avgG = gains/period, avgL = losses/period;
+    out[period] = +(avgL === 0 ? 100 : 100 - 100/(1 + avgG/avgL)).toFixed(2);
+    for (let i = period + 1; i < closes.length; i++) {
+      const d = closes[i] - closes[i-1];
+      const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+      avgG = (avgG*(period-1) + g)/period;
+      avgL = (avgL*(period-1) + l)/period;
+      out[i] = +(avgL === 0 ? 100 : 100 - 100/(1 + avgG/avgL)).toFixed(2);
+    }
+    return out;
+  };
+  const rsi6 = rsiCalc(6);
+  const rsi12 = rsiCalc(12);
+  const rsi24 = rsiCalc(24);
+
+  // 成交量 + MA5/MA10
+  const vols = rows.map(r => r.vol);
+  const volBars = rows.map(r => ({ value: r.vol, itemStyle: { color: r.close >= r.open ? '#ef4444' : '#10b981' }}));
+  const vmaCalc = (period) => vols.map((_, i) => {
+    if (i < period - 1) return '-';
+    let s = 0; for (let j = i - period + 1; j <= i; j++) s += vols[j];
+    return Math.round(s / period);
+  });
+  const vma5 = vmaCalc(5), vma10 = vmaCalc(10);
+
+  // MACD(12,26,9)
+  const ema12 = emaSeries(closes, 12);
+  const ema26 = emaSeries(closes, 26);
+  const dif = closes.map((_, i) => +(ema12[i] - ema26[i]).toFixed(4));
+  const dea = emaSeries(dif, 9).map(v => +v.toFixed(4));
+  const macd = dif.map((d, i) => +((d - dea[i]) * 2).toFixed(4));
+  const macdBars = macd.map(v => ({ value: v, itemStyle: { color: v >= 0 ? '#ef4444' : '#10b981' }}));
+
+  // 最新值用于标题
+  const N = rows.length - 1;
+  const fmt = (v, d=3) => (v == null || v === '-' || isNaN(v)) ? '-' : (+v).toFixed(d);
+  // 主图标题动态组装：使用 ECharts rich-text 给不同指标着色
+  const richStyle = {
+    bb:   { color: '#374151', fontSize: 12 },
+    up:   { color: '#f59e0b', fontSize: 12, fontWeight: 600 },
+    mid:  { color: '#3b82f6', fontSize: 12, fontWeight: 600 },
+    low:  { color: '#ec4899', fontSize: 12, fontWeight: 600 },
+    m5:   { color: '#10b981', fontSize: 12, fontWeight: 600 },
+    m10:  { color: '#a855f7', fontSize: 12, fontWeight: 600 },
+    m20:  { color: '#06b6d4', fontSize: 12, fontWeight: 600 },
+    m60:  { color: '#dc2626', fontSize: 12, fontWeight: 600 },
+    gray: { color: '#9ca3af', fontSize: 12 },
+  };
+  const mainTitleParts = [];
+  if (showBOLL) mainTitleParts.push(`{bb|BOLL(20,2)}  {up|UP:${fmt(bbU[N])}}  {mid|MID:${fmt(bbM[N])}}  {low|LOW:${fmt(bbL[N])}}`);
+  if (showMA5)  mainTitleParts.push(`{m5|MA5:${fmt(ma5[N])}}`);
+  if (showMA10) mainTitleParts.push(`{m10|MA10:${fmt(ma10[N])}}`);
+  if (showMA20) mainTitleParts.push(`{m20|MA20:${fmt(ma20[N])}}`);
+  if (showMA60) mainTitleParts.push(`{m60|MA60:${fmt(ma60[N])}}`);
+  if (!mainTitleParts.length) mainTitleParts.push('{gray|未叠加指标 - 上方勾选 BOLL/MA}');
+
+  const titles = [
+    { left: 8, top: 0, text: mainTitleParts.join('   '), textStyle: { rich: richStyle } },
+    { left: 8, top: '36%', text: `RSI(6,12,24)  RSI6:${fmt(rsi6[N],2)}  RSI12:${fmt(rsi12[N],2)}  RSI24:${fmt(rsi24[N],2)}`,
+      textStyle: { fontSize: 12, fontWeight: 'normal' } },
+    { left: 8, top: '56%', text: `成交量  当日:${(vols[N]/1e6).toFixed(2)}万手  MA5:${(vma5[N]/1e6).toFixed(2)}万手  MA10:${(vma10[N]/1e6).toFixed(2)}万手`,
+      textStyle: { fontSize: 12, fontWeight: 'normal' } },
+    { left: 8, top: '76%', text: `MACD(12,26,9)  DIF:${fmt(dif[N],4)}  DEA:${fmt(dea[N],4)}  MACD:${fmt(macd[N],4)}`,
+      textStyle: { fontSize: 12, fontWeight: 'normal' } },
+  ];
+
+  $('chartContainer').innerHTML = '';
+  if (_kChart) _kChart.dispose();
+  _kChart = echarts.init($('chartContainer'));
+
+  _kChart.setOption({
+    backgroundColor: '#fff',
+    title: titles,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', link: { xAxisIndex: 'all' } },
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e5e7eb',
+      borderWidth: 1,
+      textStyle: { fontSize: 11 },
+      formatter: (params) => {
+        if (!params || !params.length) return '';
+        const date = params[0].axisValue;
+        const map = {};
+        params.forEach(p => { if (!map[p.seriesName]) map[p.seriesName] = p; });
+        const get = (name, def='-', dig=3) => {
+          const p = map[name]; if (!p) return def;
+          const v = p.value;
+          if (v == null || v === '-' || isNaN(v)) return def;
+          return (+v).toFixed(dig);
+        };
+        const k = map['K线']?.data;
+        let html = `<div style="line-height:1.5"><strong>${date}</strong>`;
+        if (k) html += `<br/>开${fmt(k[1])} 收${fmt(k[2])} 高${fmt(k[4])} 低${fmt(k[3])}`;
+        html += `<br/>BB:  ${get('BB上轨')} / ${get('BB中轨')} / ${get('BB下轨')}`;
+        html += `<br/>RSI: ${get('RSI6',  '-', 2)} / ${get('RSI12','-',2)} / ${get('RSI24','-',2)}`;
+        const vol = map['成交量']?.value;
+        if (vol != null) html += `<br/>量:  ${(vol/1e6).toFixed(2)}万手`;
+        html += `<br/>MACD: ${get('DIF','-',4)} / ${get('DEA','-',4)} / ${get('MACD','-',4)}`;
+        return html + '</div>';
+      },
+    },
+    axisPointer: { link: [{ xAxisIndex: 'all' }], label: { backgroundColor: '#6b7280' } },
+    grid: [
+      { left: 60, right: 50, top: 22,    height: '30%' },   // 主图 K + BOLL
+      { left: 60, right: 50, top: '40%', height: '14%' },   // RSI
+      { left: 60, right: 50, top: '60%', height: '14%' },   // 成交量
+      { left: 60, right: 50, top: '80%', height: '14%' },   // MACD
+    ],
+    xAxis: [
+      { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { onZero: false }, splitLine: { show: false }, axisLabel: { show: false } },
+      { type: 'category', gridIndex: 1, data: dates, scale: true, boundaryGap: false, axisLine: { onZero: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false } },
+      { type: 'category', gridIndex: 2, data: dates, scale: true, boundaryGap: false, axisLine: { onZero: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false } },
+      { type: 'category', gridIndex: 3, data: dates, scale: true, boundaryGap: false, axisLine: { onZero: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { fontSize: 10 } },
+    ],
+    yAxis: [
+      { scale: true, splitArea: { show: false }, splitLine: { lineStyle: { color: '#f3f4f6' } }, axisLabel: { fontSize: 10 }, position: 'right' },
+      { scale: true, gridIndex: 1, min: 0, max: 100, splitNumber: 2, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#f3f4f6' } }, position: 'right' },
+      { scale: true, gridIndex: 2, splitNumber: 2, axisLabel: { fontSize: 10, formatter: v => v >= 1e8 ? (v/1e8).toFixed(1)+'亿' : v >= 1e4 ? (v/1e4).toFixed(0)+'万' : v }, splitLine: { lineStyle: { color: '#f3f4f6' } }, position: 'right' },
+      { scale: true, gridIndex: 3, splitNumber: 2, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#f3f4f6' } }, position: 'right' },
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1, 2, 3], start: 50, end: 100, zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true },
+      { type: 'slider', xAxisIndex: [0, 1, 2, 3], start: 50, end: 100, height: 14, bottom: 0 },
+    ],
+    series: [
+      // 主图：K + 按开关叠加 BB / MA
+      { name: 'K线', type: 'candlestick', data: kdata,
+        itemStyle: { color: '#ef4444', color0: '#10b981', borderColor: '#ef4444', borderColor0: '#10b981' } },
+      ...(showBOLL ? [
+        { name: 'BB上轨', type: 'line', data: bbU, showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.2 } },
+        { name: 'BB中轨', type: 'line', data: bbM, showSymbol: false, lineStyle: { color: '#3b82f6', width: 1.2 } },
+        { name: 'BB下轨', type: 'line', data: bbL, showSymbol: false, lineStyle: { color: '#ec4899', width: 1.2 } },
+      ] : []),
+      ...(showMA5  ? [{ name: 'MA5',  type: 'line', data: ma5,  showSymbol: false, lineStyle: { color: '#10b981', width: 1 } }] : []),
+      ...(showMA10 ? [{ name: 'MA10', type: 'line', data: ma10, showSymbol: false, lineStyle: { color: '#a855f7', width: 1 } }] : []),
+      ...(showMA20 ? [{ name: 'MA20', type: 'line', data: ma20, showSymbol: false, lineStyle: { color: '#06b6d4', width: 1.5 } }] : []),
+      ...(showMA60 ? [{ name: 'MA60', type: 'line', data: ma60, showSymbol: false, lineStyle: { color: '#dc2626', width: 1 } }] : []),
+      // RSI
+      { name: 'RSI6',  type: 'line', data: rsi6,  xAxisIndex: 1, yAxisIndex: 1, showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.2 },
+        markLine: { silent: true, symbol: 'none', label: { fontSize: 9, show: false }, data: [
+          { yAxis: 80, lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 } },
+          { yAxis: 50, lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 } },
+          { yAxis: 20, lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 } },
+        ]}},
+      { name: 'RSI12', type: 'line', data: rsi12, xAxisIndex: 1, yAxisIndex: 1, showSymbol: false, lineStyle: { color: '#3b82f6', width: 1.2 } },
+      { name: 'RSI24', type: 'line', data: rsi24, xAxisIndex: 1, yAxisIndex: 1, showSymbol: false, lineStyle: { color: '#ec4899', width: 1.2 } },
+      // 成交量
+      { name: '成交量', type: 'bar', data: volBars, xAxisIndex: 2, yAxisIndex: 2 },
+      { name: 'VMA5',  type: 'line', data: vma5,  xAxisIndex: 2, yAxisIndex: 2, showSymbol: false, lineStyle: { color: '#f59e0b', width: 1 } },
+      { name: 'VMA10', type: 'line', data: vma10, xAxisIndex: 2, yAxisIndex: 2, showSymbol: false, lineStyle: { color: '#3b82f6', width: 1 } },
+      // MACD
+      { name: 'MACD', type: 'bar', data: macdBars, xAxisIndex: 3, yAxisIndex: 3 },
+      { name: 'DIF',  type: 'line', data: dif, xAxisIndex: 3, yAxisIndex: 3, showSymbol: false, lineStyle: { color: '#f59e0b', width: 1.2 } },
+      { name: 'DEA',  type: 'line', data: dea, xAxisIndex: 3, yAxisIndex: 3, showSymbol: false, lineStyle: { color: '#3b82f6', width: 1.2 } },
+    ],
+  });
+  setTimeout(() => _kChart && _kChart.resize(), 50);
+
+  // 鼠标跟随：移动到任意 K 线 → 同步更新顶部行情条
+  _kChart.off('updateAxisPointer');
+  _kChart.on('updateAxisPointer', (params) => {
+    if (!_kCacheRows) return;
+    const info = params.axesInfo && params.axesInfo[0];
+    if (!info) return;
+    let idx = info.value;
+    if (typeof idx === 'string') {
+      // category axis 偶尔返回 label，从日期反查 index
+      idx = _kCacheRows.findIndex(r => r.date === idx);
+    }
+    if (typeof idx === 'number' && idx >= 0 && idx < _kCacheRows.length) {
+      renderHeaderInfo(_kCacheRows, idx);
+    }
+  });
+  // 鼠标离开图表 → 恢复显示最新日
+  $('chartContainer').onmouseleave = () => {
+    if (_kCacheRows) renderHeaderInfo(_kCacheRows);
+  };
+}
+
+// 事件
+$('chartClose').addEventListener('click', closeChartModal);
+$('chartModal').addEventListener('click', (e) => { if (e.target === $('chartModal')) closeChartModal(); });
+$('chartPeriod').addEventListener('change', () => loadChartData());
+document.querySelectorAll('.period-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-tab').forEach(b => b.classList.toggle('active', b === btn));
+    _kCurrent.period = btn.dataset.period;
+    loadChartData();
+  });
+});
+
+// 主图叠加开关：切换时即时重绘（用缓存数据，不重新拉取）
+['tgBOLL', 'tgMA5', 'tgMA10', 'tgMA20', 'tgMA60'].forEach(id => {
+  const cb = $(id);
+  if (!cb) return;
+  cb.addEventListener('change', () => {
+    cb.closest('.toggle-pill').classList.toggle('on', cb.checked);
+    if (_kCacheRows) renderTechChart(_kCacheRows);
+  });
+});
+$('chartAddBtn').addEventListener('click', () => {
+  const { code, name } = _kCurrent;
+  if (!code) return;
+  if (state.watchlist.some(w => w.code === code)) {
+    showToast('已在持仓', `${code} ${name}`, 'BUY');
+  } else {
+    state.watchlist.push({ code, name: name || code });
+    saveState();
+    renderWatchlist();
+    showToast('已加入持仓', `${code} ${name}`, 'BUY');
+    scanWatchlist();
+  }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('chartModal').classList.contains('show')) closeChartModal(); });
+window.addEventListener('resize', () => { if (_kChart) _kChart.resize(); });
+
+// 启动初始化
+bindMarketTableActions();
+bindGuideActions();
+loadState();
+renderWatchlist();
+renderHistory();
+renderOperationGuide();
+$('scanCount').textContent = state.scanCount;
+$('buyCount').textContent = state.buyCount;
+$('sellCount').textContent = state.sellCount;
+$('tradingHours').innerHTML = inTradingHours() ? '<span class="text-green-600">是</span>' : '<span class="text-gray-400">否</span>';
+
+// 首次加载就请求一次通知权限（不强求）
+if ('Notification' in window && Notification.permission === 'default') {
+  setTimeout(() => ensureNotificationPermission(), 1500);
+}
+</script>
+</body>
+</html>
